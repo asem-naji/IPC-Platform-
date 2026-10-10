@@ -119,6 +119,7 @@ textarea{min-height:70px}
 .stat{background:#fff;border:1px solid var(--line);border-top:5px solid var(--c);border-radius:8px;padding:12px}
 .stat b{display:block;font-size:1.7rem;font-variant-numeric:tabular-nums;line-height:1.1}
 .stat span{font-size:.82rem;color:var(--muted)}
+.stat small{display:block;font-size:.78rem;color:var(--muted)}
 .stat .met{color:var(--go);font-weight:700;font-size:.8rem}
 .stat .miss{color:var(--stop);font-weight:700;font-size:.8rem}
 .charts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -209,6 +210,25 @@ td.c.tgt{font-weight:700}
 .ai-mic{background:var(--mist);color:var(--ink)}.ai-mic.on{background:var(--stop);color:#fff}
 .ai-send{background:var(--primary);color:#fff}.ai-send:disabled{opacity:.5}
 .foot{padding-right:96px}
+.rep-head{display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:center;gap:16px;border-bottom:3px solid var(--sun);padding-bottom:12px;margin-bottom:6px}
+.rep-head img{height:58px}.rep-head h1{margin:0;font-size:1.45rem}.rep-head p{margin:4px 0 0;color:var(--muted)}
+.rep section{break-inside:avoid-page}
+.sign{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:40px}.sign div{border-top:1px solid var(--ink);padding-top:6px;font-size:.85rem;color:var(--muted)}
+@media print{
+  @page{size:A4;margin:14mm}
+  header.bar,.foot,#ai-root,.noprint,.toast{display:none!important}
+  html,body{background:#fff}
+  .wrap.wide{max-width:none;padding:0}
+  .rep h2{font-size:1.05rem;margin:18px 0 6px}
+  table{font-size:.74rem}th,td{padding:4px 6px!important}
+  .scroll{overflow:visible}
+  td.good,td.bad{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+.alert-box{background:#FBEAE8;border:1px solid #F0B8B2;border-left:6px solid var(--stop);border-radius:10px;padding:12px 14px;margin:0 0 14px}
+.pill.long{background:#FFF1CC;border-color:#E3B341;color:#6B4A00}
+.crit{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #EEF3F3;cursor:pointer}
+.crit input{width:20px;height:20px;margin-top:2px;flex:0 0 20px}
+.crit-h{font-weight:700;margin:14px 0 4px}.card .crit-h:first-child{margin-top:0}
 .dbox{position:relative;display:flex;gap:6px;align-items:stretch}
 .dbox .dtext{flex:1;min-width:0}
 .dbox .dcal{flex:0 0 46px;border:1.5px solid var(--line);background:#fff;border-radius:8px;display:grid;place-items:center;color:var(--primary)}
@@ -222,6 +242,7 @@ td.c.tgt{font-weight:700}
 <script>
 /* ================= Reference data ================= */
 const DEPARTMENTS=["General Ward (3rd Floor)","ICU","Pediatric ICU","CCU","ER","Male Psychiatry","Female Psychiatry","General OPD","Psychiatry OPD","Day Care Unit","Laboratory","Radiology","Pharmacy","Isolation rooms","Other"];
+const ISO_UNITS=["ER","ICU","CCU","Third floor"];
 const OPD_SPECIALTIES=["Internal medicine","General surgery","Orthopedics","ENT","Pediatrics","Dietitian","Neurology","Other specialty"];
 const rng=(a,b,p="")=>Array.from({length:b-a+1},(_,i)=>p+(a+i));
 /* DRAFT: unit areas. Add or rename to match the hospital */
@@ -240,7 +261,7 @@ const LOC={
   "Laboratory":{areas:["Microbiology","Hematology","Clinical chemistry","Blood bank","Sample collection","Reception"]},
   "Radiology":{areas:["X-ray room 1","X-ray room 2","CT room","MRI room","Ultrasound room","Waiting area","Dirty utility"]},
   "Pharmacy":{areas:["Inpatient pharmacy","Outpatient pharmacy","IV room"]},
-  "Isolation rooms":{rooms:["ER isolation 1","ER isolation 2","ER isolation 3","ICU isolation 9","ICU isolation 10","ICU isolation 21","Room 315","Room 317","Room 354","Room 355"]},
+  "Isolation rooms":{rooms:["ER isolation 1","ER isolation 2","ER isolation 3","ICU isolation 9","ICU isolation 10","ICU isolation 21","CCU isolation","Room 315","Room 317","Room 354","Room 355"]},
   "Other":{rooms:"text",areas:[]}};
 const STAFF=["Nurse","Doctor","Housekeeping","Other"];
 const ROLES={team:"Infection Control Team",link:"Infection Control Link"};
@@ -349,13 +370,48 @@ async function sget(k){
   try{if(LS){const v=LS.getItem(k);return v===null?null:JSON.parse(v);}}catch(e){}
   return mem[k]??null;
 }
-async function sset(k,v){mem[k]=v;
+async function sset(k,v){if(TRACK[k]&&S.user)trackDiff(k,v);mem[k]=v;
   try{if(window.storage){await window.storage.set(k,JSON.stringify(v),false);return;}}catch(e){console.error("Storage error",e);return;}
   try{if(LS)LS.setItem(k,JSON.stringify(v));}catch(e){console.error("Storage full or unavailable",e);}
 }
 async function sdel(k){delete mem[k];
   try{if(window.storage){await window.storage.delete(k,false);return;}}catch(e){return;}
   try{if(LS)LS.removeItem(k);}catch(e){}
+}
+
+/* ================= Activity log ================= */
+const TRACK={"ipc-audits":"Audit entry","ipc-actions":"Corrective action","ipc-patients":"Patient","ipc-devices":"Device","ipc-events":"Culture",
+  "ipc-users":"User account","ipc-mdro":"MDRO case","ipc-surg":"Surgical procedure"};
+const SNAP={};
+const snapOf=v=>Object.fromEntries((Array.isArray(v)?v:[]).map(x=>[x.id||x.username,JSON.stringify(x)]));
+function logLabel(k,x){
+  try{switch(k){
+    case "ipc-audits":return `${MODULES[x.type]?.name||x.type}, ${deptName(x)}${locName(x)?`, ${locName(x)}`:""}, ${fmt(x.date)}`;
+    case "ipc-actions":return `${MODULES[x.module]?.name||"General"}, ${x.dept}: ${String(x.issue||"").slice(0,70)}`;
+    case "ipc-patients":return `${x.unit} bed ${x.bed}, MRN ${x.mrn}`;
+    case "ipc-devices":{const p=S.patients.find(y=>y.id===x.patientId);return `${DEV[x.type]?.name||x.type}${p?`, ${p.unit} bed ${p.bed}`:""}`;}
+    case "ipc-events":{const p=S.patients.find(y=>y.id===x.patientId);return `${x.specimen} culture ${fmt(x.date)}, ${x.organism}${p?`, ${p.unit} bed ${p.bed}`:""}`;}
+    case "ipc-users":return `${x.name} (${x.username}), ${ROLES[x.role]}`;
+    case "ipc-mdro":return `${x.mdroType||"MDRO"} ${x.organism||""}, ${x.unit||""}, ${fmt(x.date)}`;
+    case "ipc-surg":{const p=S.patients.find(y=>y.id===x.patientId);return `${x.procedure}, ${fmt(x.date)}${p?`, ${p.unit} bed ${p.bed}`:""}`;}
+  }}catch(e){}return x.id||"";
+}
+function changeNote(k,a,b){
+  if(k==="ipc-devices"){if((b.checks||[]).length>(a.checks||[]).length)return "daily check saved";if(!a.removed&&b.removed)return `removed ${fmt(b.removed)}`;if((b.adh||[]).length>(a.adh||[]).length)return "adherence monitoring saved";}
+  if(k==="ipc-events"&&a.status!==b.status)return `review: ${b.status}`;
+  if(k==="ipc-actions"&&a.status!==b.status)return `status: ${b.status}`;
+  if(k==="ipc-patients"){if(a.status!==b.status)return `${b.outcome||"discharged"}`;if(a.unit!==b.unit||a.bed!==b.bed)return `moved to ${b.unit} bed ${b.bed}`;}
+  if(k==="ipc-users"){if(a.hash!==b.hash)return "password changed";if(JSON.stringify(a.perms)!==JSON.stringify(b.perms))return "access changed";}
+  return "edited";
+}
+function trackDiff(k,v){
+  const old=SNAP[k]||{},now=snapOf(v),ts=Date.now(),by=S.user.name,what=TRACK[k],add=[];
+  for(const [id,j] of Object.entries(now)){if(!(id in old))add.push({ts,by,what,act:"Added",label:logLabel(k,JSON.parse(j))});
+    else if(old[id]!==j)add.push({ts,by,what,act:"Changed",label:logLabel(k,JSON.parse(j)),note:changeNote(k,JSON.parse(old[id]),JSON.parse(j))});}
+  for(const [id,j] of Object.entries(old))if(!(id in now))add.push({ts,by,what,act:"Deleted",label:logLabel(k,JSON.parse(j))});
+  SNAP[k]=now;if(!add.length)return;
+  S.log=[...(S.log||[]),...add].slice(-6000);
+  (async()=>{mem["ipc-log"]=S.log;try{if(window.storage)await window.storage.set("ipc-log",JSON.stringify(S.log),false);else if(LS)LS.setItem("ipc-log",JSON.stringify(S.log));}catch(e){}})();
 }
 
 /* ================= Password hashing ================= */
@@ -369,7 +425,7 @@ const newSalt=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
 /* ================= State ================= */
-const S={users:[],user:null,audits:[],actions:[],targets:{},bench:[],envCustom:{},patients:[],devices:[],events:[],round:{unit:"ICU",dis:false},bd:{unit:"all",period:"90"},pid:null,did:null,eid:null,view:"boot",module:null,form:{},session:{n:0,ok:0},
+const S={users:[],user:null,audits:[],actions:[],targets:{},bench:[],envCustom:{},log:[],settings:{},mdro:[],census:{},surg:[],patients:[],devices:[],events:[],round:{unit:"ICU",dis:false},bd:{unit:"all",period:"90"},pid:null,did:null,eid:null,view:"boot",module:null,form:{},session:{n:0,ok:0},
   filter:{type:"all",dept:"all"},dash:{dept:"all",period:"90"},actFilter:"open",actionDraft:null,error:"",modal:null};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -377,8 +433,8 @@ const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth
 const pctN=(a,b)=>b?Math.round(a/b*100):null;
 const pct=(a,b)=>b?Math.round(a/b*100)+"%":"–";
 const isTeam=()=>S.user&&S.user.role==="team";
-const TEAM_ONLY=["records","users","uaccess","dash","actions","actionNew","cases","case","bdash","bench"];
-const BUNDLE_VIEWS=["round","ptform","patient","devnew","device","check","culture","dischg","adh"];
+const TEAM_ONLY=["mdro","mdronew","mdroimp","report","settings","log","records","users","uaccess","dash","actions","actionNew","cases","case","bdash","bench"];
+const BUNDLE_VIEWS=["surg","round","ptform","patient","devnew","device","check","culture","dischg","adh"];
 /* what an Infection Control Link user may enter; empty depts means every department */
 const ACCESS=[["hh","Hand Hygiene"],["ppe","PPE Compliance"],["waste","Waste Management"],["env","Environmental Cleaning"],["bundles","Device care bundles (patients, daily checks, cultures)"]];
 const DEFAULT_PERMS={mods:["hh","ppe","waste","env"],depts:[]};
@@ -402,7 +458,13 @@ const BM_METRICS=[
   {k:"adh_uc",l:"Urinary catheter adherence monitoring",u:"%",hi:true},
   {k:"r_uc",l:"CAUTI rate",u:"per 1,000 catheter days",hi:false},
   {k:"r_cl",l:"CLABSI rate",u:"per 1,000 central line days",hi:false},
-  {k:"r_mv",l:"VAE rate",u:"per 1,000 ventilator days",hi:false}];
+  {k:"r_mv",l:"VAE rate",u:"per 1,000 ventilator days",hi:false},
+  {k:"b_pv",l:"Pediatric ventilator daily bundle",u:"%",hi:true},
+  {k:"r_pv",l:"PedVAE rate",u:"per 1,000 ventilator days",hi:false},
+  {k:"b_ssi",l:"Surgical bundle",u:"%",hi:true},
+  {k:"r_ssi",l:"SSI rate",u:"per 100 operations",hi:false},
+  {k:"mdro_ho",l:"Hospital-onset MDRO rate",u:"per 1,000 patient days",hi:false},
+  {k:"iso",l:"Isolation in place for MDRO cases",u:"%",hi:true}];
 const isNum=v=>v!==null&&v!==undefined&&v!==""&&!isNaN(+v);
 function benchTable(keys,ours){
   const cols=[{n:"Hospital target",v:k=>target(k)},...S.bench.map(b=>({n:b.name,v:k=>b.values[k]}))];
@@ -445,9 +507,9 @@ function go(view,extra={}){
 }
 function toast(msg,bad){document.querySelectorAll(".toast").forEach(x=>x.remove());const t=document.createElement("div");t.className="toast"+(bad?" bad":"");t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),1800);}
 function freshForm(type,keep={}){
-  const base={date:today(),dept:keep.dept||"",deptOther:keep.deptOther||"",specialty:keep.specialty||"",specialtyOther:keep.specialtyOther||"",feedback:"",note:""};
+  const base={date:today(),validation:keep.validation||"",dept:keep.dept||"",deptOther:keep.deptOther||"",specialty:keep.specialty||"",specialtyOther:keep.specialtyOther||"",feedback:"",note:""};
   const loc={locType:keep.locType||"",room:"",areaOther:""};
-  if(type==="hh")return{...base,category:keep.category||"",categoryOther:keep.categoryOther||"",staffId:"",moments:[],action:"",gloves:""};
+  if(type==="hh")return{...base,isoUnit:keep.isoUnit||"",category:keep.category||"",categoryOther:keep.categoryOther||"",staffId:"",moments:[],action:"",gloves:""};
   if(type==="ppe")return{...base,...loc,precautions:[],category:"",categoryOther:"",staffId:"",items:{}};
   if(type==="env")return{...base,...loc,cleanType:keep.cleanType||"",method:keep.method||"",resp:keep.resp||"",seen:keep.resp?[keep.resp]:[],st:{},items:{},photos:[]};
   return{...base,...loc,items:{},photos:[]};
@@ -544,7 +606,7 @@ const errHtml=()=>S.error?`<div class="err" role="alert">${esc(S.error)}</div>`:
 const crumb=(label,mid)=>`<div class="crumb"><button data-a="nav" data-v="home">Home</button>${mid||""}<span>/ ${label}</span></div>`;
 const deptName=a=>a.dept==="Other"?(a.deptOther||"Other"):a.dept;
 const specName=a=>a.specialty?(a.specialty==="Other specialty"?(a.specialtyOther||"Other specialty"):a.specialty):"";
-const locName=a=>{const r=a.room==="Other area"?(a.areaOther||"Other area"):a.room;const sp=specName(a);
+const locName=a=>{if(a.isoUnit)return `${a.isoUnit} isolation`;const r=a.room==="Other area"?(a.areaOther||"Other area"):a.room;const sp=specName(a);
   return [sp,r?(a.locType==="Patient room"&&/^\d+$/.test(r)?"Room "+r:r):""].filter(Boolean).join(", ");};
 const precName=a=>a.precautions?.length?a.precautions.join(" + "):(a.precaution||"");
 const catName=a=>a.category==="Other"?(a.categoryOther||"Other"):a.category;
@@ -557,14 +619,18 @@ function vHome(){
   return `<div class="wrap wide">
     <h1>Welcome, ${esc(S.user.name)}</h1>
     <p class="lead">${team?"Choose what you are recording or reviewing today.":"Choose the audit you are recording. Entries go straight to the Infection Control Team."}</p>
+    ${clusterBanner()}
     <div class="tiles grid">
       ${Object.keys(MODULES).some(canMod)?`<button class="tile" style="--c:var(--hh)" data-a="nav" data-v="surv"><div><b>Surveillance and audits</b><span>Hand hygiene, PPE, waste management, environmental cleaning</span></div><span class="go" aria-hidden="true">›</span></button>`:""}
       ${!team&&canMod("bundles")?`<button class="tile" style="--c:#A23B72" data-a="nav" data-v="round"><div><b>Device care bundles</b><span>Daily round by bed: patients, devices and daily checks</span></div><span class="go" aria-hidden="true">›</span></button>`:""}
       ${team?`
       <button class="tile" style="--c:var(--ink)" data-a="nav" data-v="dash"><div><b>Dashboard</b><span>Monthly trends against targets, hand hygiene by moment and profession, most failed items</span></div><span class="go" aria-hidden="true">›</span></button>
       <button class="tile" style="--c:var(--ink)" data-a="nav" data-v="records"><div><b>Records</b><span>${S.audits.length} saved ${S.audits.length===1?"entry":"entries"}, photos, CSV export</span></div><span class="go" aria-hidden="true">›</span></button>
-      <button class="tile" style="--c:var(--stop)" data-a="nav" data-v="actions"><div><b>Corrective actions</b><span>${open.length} open${over.length?`, <span class="alert">${over.length} overdue</span>`:""}</span></div><span class="go" aria-hidden="true">›</span></button>
+      <button class="tile" style="--c:var(--stop)" data-a="nav" data-v="actions"><div><b>Corrective actions</b><span>${open.length} open${over.length?`, <span class="alert">${over.length} overdue</span>`:""}${S.actions.filter(reauditDue).length?`, ${S.actions.filter(reauditDue).length} re-audit due`:""}</span></div><span class="go" aria-hidden="true">›</span></button>
       <button class="tile" style="--c:var(--primary)" data-a="nav" data-v="bench"><div><b>Targets and benchmarks</b><span>Hospital targets and named benchmarks, for example MOH or group</span></div><span class="go" aria-hidden="true">›</span></button>
+      <button class="tile" style="--c:#7A3E9D" data-a="nav" data-v="mdro"><div><b>MDRO surveillance</b><span>${S.mdro.filter(m=>m.date?.startsWith(monthKey(today()))).length} cases this month. Import the lab line list, rates per 1,000 patient days</span></div><span class="go" aria-hidden="true">›</span></button>
+      <button class="tile" style="--c:var(--ink)" data-a="nav" data-v="report"><div><b>Monthly report</b><span>One printable report for the infection control committee</span></div><span class="go" aria-hidden="true">›</span></button>
+      <button class="tile" style="--c:var(--primary)" data-a="nav" data-v="settings"><div><b>Data and settings</b><span>Backup and merge, activity log, sign-out time, sample sizes${!S.settings.lastBackup||S.settings.lastBackup<addDays(today(),-7)?`, <span class="alert">backup due</span>`:""}</span></div><span class="go" aria-hidden="true">›</span></button>
       <button class="tile" style="--c:var(--primary)" data-a="nav" data-v="users"><div><b>Manage users</b><span>${S.users.length} ${S.users.length===1?"account":"accounts"}</span></div><span class="go" aria-hidden="true">›</span></button>
       <button class="tile" style="--c:#A23B72" data-a="nav" data-v="round"><div><b>Device care bundles</b><span>${(()=>{const n=S.patients.filter(p=>p.status==="active").length,due=S.devices.filter(d=>!d.removed&&ptOf(d.patientId)?.status==="active"&&!checkedToday(d)).length;return `Daily round by bed: ${n} active ${n===1?"patient":"patients"}${due?`, <span class="alert">${due} ${due===1?"check":"checks"} due</span>`:""}`;})()}</span></div><span class="go" aria-hidden="true">›</span></button>`:""}
     </div></div>`;
@@ -579,6 +645,7 @@ function deptBlock(f){
   return `<label class="f" for="dept">Department</label>
     <select id="dept" data-bind="dept"><option value="">Select department</option>${allowedDepts().map(d=>`<option ${f.dept===d?"selected":""}>${d}</option>`).join("")}</select>
     ${f.dept==="Other"?`<input type="text" style="margin-top:8px" placeholder="Name the department" data-bind="deptOther" value="${esc(f.deptOther)}">`:""}
+    ${f.dept==="Isolation rooms"&&S.module==="hh"?chipsBlock("Which isolation","isoUnit",ISO_UNITS,f):""}
     ${f.dept==="General OPD"?`${chipsBlock("Clinic specialty","specialty",OPD_SPECIALTIES,f)}
       ${f.specialty==="Other specialty"?`<input type="text" style="margin-top:8px" placeholder="Name the specialty" data-bind="specialtyOther" value="${esc(f.specialtyOther)}">`:""}`:""}`;
 }
@@ -615,7 +682,8 @@ const subMiss=(items,f)=>items.findIndex(i=>i.subs&&f.items[i.k]==="n"&&!((f.sub
 const withWhy=(i,rec)=>i.t+((rec.subs||{})[i.k]?.length?` (${rec.subs[i.k].join(", ")})`:"");
 function topReason(list,k){const rs={};list.forEach(x=>((x.subs||{})[k]||[]).forEach(s=>rs[s]=(rs[s]||0)+1));const t=Object.entries(rs).sort((a,b)=>b[1]-a[1])[0];return t?`<br><small style="color:var(--muted)">Most often: ${esc(t[0])} (${t[1]})</small>`:"";}
 function feedbackBlock(f,who){
-  return chipsBlock(`Feedback given ${who}? <small>(optional)</small>`,"feedback",["Yes","No"],f);
+  return chipsBlock(`Feedback given ${who}? <small>(optional)</small>`,"feedback",["Yes","No"],f)+
+    (isTeam()?`${chipsBlock(`Validation re-audit <small>(tick when you are checking a department audited by link nurses)</small>`,"validation",["Validation re-audit"],f)}`:"");
 }
 function photoBlock(f){
   const left=MAX_PHOTOS-f.photos.length;
@@ -742,6 +810,54 @@ function locTable(list,byDept){
     ${keys.map(k=>`<tr><th scope="row">${esc(k)}</th>${Object.keys(MODULES).map(t=>cell(list.filter(a=>a.type===t&&key(a)===k))).join("")}</tr>`).join("")}</tbody></table></div>
     ${byDept?`<p class="hint">Pick one department above to break it down by room and area.</p>`:""}`;
 }
+const roleOfEntry=a=>S.users.find(u=>u.username===a.auditorUser)?.role||"team";
+const monthKey=d=>d.slice(0,7);
+const monthName=m=>new Date(m+"-01T00:00:00Z").toLocaleDateString("en-GB",{month:"long",year:"numeric",timeZone:"UTC"});
+const prevMonth=m=>addDays(m+"-01",-1).slice(0,7);
+function sampleTable(month,depts){
+  const l=S.audits.filter(a=>monthKey(a.date)===month);
+  const ds=depts||[...new Set(S.audits.filter(a=>a.date>=addDays(month+"-01",-90)).map(deptName))].sort();
+  if(!ds.length)return `<div class="card">No audits in the last three months.</div>`;
+  return `<div class="scroll"><table><thead><tr><th>Department</th>${Object.entries(MODULES).map(([k,m])=>`<th>${m.name}<br><small style="font-weight:400">minimum ${sampleMin(k)}</small></th>`).join("")}</tr></thead><tbody>
+    ${ds.map(d=>`<tr><th scope="row">${esc(d)}</th>${Object.keys(MODULES).map(k=>{const n=l.filter(a=>a.type===k&&deptName(a)===d).length,min=sampleMin(k);
+      return `<td class="c ${min?(n>=min?"good":"bad"):"none"}">${n}${min&&n<min?`<small>${min-n} short</small>`:""}</td>`;}).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+function validationRows(list){
+  const out=[];
+  for(const k of Object.keys(MODULES)){const l=list.filter(a=>a.type===k),depts=[...new Set(l.filter(a=>a.validation).map(deptName))];
+    for(const d of depts){const link=l.filter(a=>deptName(a)===d&&roleOfEntry(a)==="link"),val=l.filter(a=>deptName(a)===d&&a.validation);
+      const lr=pctN(link.filter(a=>a.compliant).length,link.length),vr=pctN(val.filter(a=>a.compliant).length,val.length);
+      out.push({k,d,ln:link.length,vn:val.length,lr,vr,diff:lr!==null&&vr!==null?lr-vr:null});}}
+  return out;
+}
+function validationTable(list){
+  const r=validationRows(list);
+  if(!r.length)return `<div class="card">No validation re-audits in this view. When a team member audits a department that link nurses audit, tick "Validation re-audit" on the form.</div>`;
+  return `<div class="scroll"><table><thead><tr><th>Audit</th><th>Department</th><th>Link nurse entries</th><th>Team re-audit</th><th>Difference</th></tr></thead><tbody>
+    ${r.map(x=>`<tr><td>${MODULES[x.k].name}</td><td>${esc(x.d)}</td><td class="c">${x.lr??"–"}${x.lr!==null?"%":""}<small>n=${x.ln}</small></td><td class="c">${x.vr??"–"}${x.vr!==null?"%":""}<small>n=${x.vn}</small></td>
+      <td class="c ${x.diff===null?"none":Math.abs(x.diff)>15?"bad":"good"}">${x.diff===null?"–":(x.diff>0?"+":"")+x.diff+" points"}</td></tr>`).join("")}</tbody></table></div>
+    <p class="hint">A difference over 15 points means the link nurse results may not reflect practice. Review technique and the observation method with them.</p>`;
+}
+/* draft a corrective action when a department stays below target two complete months in a row */
+async function autoActions(){
+  if(!isTeam())return;
+  const m1=prevMonth(monthKey(today())),m2=prevMonth(m1);let made=0;
+  for(const k of Object.keys(MODULES)){
+    const depts=[...new Set(S.audits.filter(a=>a.type===k&&[m1,m2].includes(monthKey(a.date))).map(deptName))];
+    for(const d of depts){
+      const r=m=>{const l=S.audits.filter(a=>a.type===k&&deptName(a)===d&&monthKey(a.date)===m);return{n:l.length,p:pctN(l.filter(a=>a.compliant).length,l.length)};};
+      const a1=r(m1),a2=r(m2),tg=target(k),key=`${k}|${d}|${m1}`;
+      if(a1.n>=5&&a2.n>=5&&a1.p<tg&&a2.p<tg&&!S.actions.some(x=>x.autoKey===key)){
+        S.actions.push({id:uid(),created:today(),module:k,dept:d,auto:true,autoKey:key,
+          issue:`${MODULES[k].name} below the ${tg}% target two months running: ${a2.p}% in ${monthName(m2)} (n=${a2.n}) and ${a1.p}% in ${monthName(m1)} (n=${a1.n}).`,
+          action:"",owner:"",due:addDays(today(),14),status:"Open",by:"Platform"});made++;}
+    }
+  }
+  if(made){await sset("ipc-actions",S.actions);toast(`${made} corrective action ${made===1?"draft":"drafts"} created`);}
+}
+/* after an action is closed, its department should be re-audited */
+const reauditDue=x=>x.status==="Done"&&x.closed&&MODULES[x.module]&&x.dept!=="Hospital-wide"&&x.closed<=addDays(today(),-14)
+  &&!S.audits.some(a=>a.type===x.module&&deptName(a)===x.dept&&a.date>x.closed);
 function hhMatrix(list){
   const hh=list.filter(a=>a.type==="hh"),tg=target("hh");
   const cell=(l)=>{const n=l.length,v=pctN(l.filter(a=>a.compliant).length,n);return n?`<td class="c ${v>=tg?"good":"bad"}">${v}%<small>n=${n}</small></td>`:`<td class="c none">–</td>`;};
@@ -777,6 +893,10 @@ function vDash(){
     <div class="charts">${Object.keys(MODULES).map(k=>trendSVG(k,byDept)).join("")}</div>
     <h2>${d.dept==="all"?"By department":`By room and area in ${esc(d.dept)}`}</h2>
     ${locTable(inP,d.dept==="all")}
+    <h2>Sample size this month</h2>
+    ${sampleTable(monthKey(today()),d.dept==="all"?null:[d.dept])}
+    <h2>Validation of link nurse audits</h2>
+    ${validationTable(inP.filter(a=>d.dept==="all"||deptName(a)===d.dept))}
     <h2>Hand hygiene by moment and profession</h2>
     ${hhMatrix(inP)}
     <h2>Most failed checklist items</h2>
@@ -790,7 +910,7 @@ function vDash(){
 /* ================= Records ================= */
 function detail(a){
   const sid=a.staffId?`, staff ID ${esc(a.staffId)}`:"";
-  if(a.type==="hh")return `${esc(catName(a))}${sid}${specName(a)?`, ${esc(specName(a))}`:""}, moment ${a.moments.join(" + ")}, ${HH_ACTIONS.find(x=>x.k===a.action).l.toLowerCase()}${a.gloves?` (${a.gloves.toLowerCase()})`:""}`;
+  if(a.type==="hh")return `${esc(catName(a))}${sid}${a.isoUnit?`, ${esc(a.isoUnit)} isolation`:""}${specName(a)?`, ${esc(specName(a))}`:""}, moment ${a.moments.join(" + ")}, ${HH_ACTIONS.find(x=>x.k===a.action).l.toLowerCase()}${a.gloves?` (${a.gloves.toLowerCase()})`:""}`;
   const fails=CHECK[a.type].filter(i=>a.items[i.k]==="n").map(i=>withWhy(i,a));
   const head=a.type==="ppe"?`${esc(catName(a))}${sid}, ${esc(precName(a))}, ${esc(locName(a))}`
     :a.type==="env"?`${esc(locName(a))}, ${esc(a.cleanType)}, ${esc(a.method||"")}${a.resp?`, ${esc(a.resp.toLowerCase())}`:""}`:esc(locName(a));
@@ -831,26 +951,26 @@ function vActions(){
     <div class="row" style="align-items:center"><div class="chips" style="flex:2">${opts.map(([v,l])=>`<button class="chip" aria-pressed="${f===v}" data-a="actfilter" data-v="${v}">${l}</button>`).join("")}</div>
       <div style="flex:0 0 auto"><button class="btn" data-a="newaction">New action</button></div></div>
     <div style="margin-top:14px">${list.length?list.map(x=>`<div class="action ${isOverdue(x)?"over":""}" style="--c:${MODULES[x.module]?.c||"var(--ink)"}">
-      <div class="row" style="align-items:start"><div style="flex:3"><b>${esc(x.action)}</b>
+      <div class="row" style="align-items:start"><div style="flex:3"><b>${x.action?esc(x.action):`<span style="color:var(--stop)">Action not written yet</span>`}</b>${x.auto?` <span class="tag mid">Drafted by the platform</span>`:""}${reauditDue(x)?` <span class="tag no">Re-audit due</span>`:""}
         <p>${esc(x.issue)}</p>
-        <p class="hint">${MODULES[x.module]?.name||"General"}, ${esc(x.dept)}. Owner: ${esc(x.owner)}. Due ${x.due||"not set"}${isOverdue(x)?` <span class="tag no">Overdue</span>`:""}</p></div>
+        <p class="hint">${MODULES[x.module]?.name||"General"}, ${esc(x.dept)}. Owner: ${esc(x.owner||"not set")}. Due ${x.due?fmt(x.due):"not set"}${x.closed?`. Closed ${fmt(x.closed)}`:""}${isOverdue(x)?` <span class="tag no">Overdue</span>`:""}</p></div>
         <div style="flex:1;min-width:150px"><label class="f" style="margin-top:0" for="st-${x.id}">Status</label>
         <select id="st-${x.id}" data-status="${x.id}">${ACTION_STATUS.map(s=>`<option ${x.status===s?"selected":""}>${s}</option>`).join("")}</select>
-        <button class="link-btn" style="color:var(--stop);margin-top:8px" data-a="delaction" data-id="${x.id}">Delete</button></div></div>
+        <button class="link-btn" style="margin-top:8px" data-a="editaction" data-id="${x.id}">Edit</button> <button class="link-btn" style="color:var(--stop);margin-top:8px" data-a="delaction" data-id="${x.id}">Delete</button></div></div>
       </div>`).join(""):`<div class="card">No actions in this view.</div>`}</div>
   </div>`;
 }
 function vActionNew(){
   const d=S.actionDraft||{};
   return `<div class="wrap">${crumb("New action",`<span>/</span><button data-a="nav" data-v="actions">Corrective actions</button>`)}
-    <h1>New corrective action</h1>
+    <h1>${d.id?"Edit corrective action":"New corrective action"}</h1>
     <div class="card">
       <div class="row"><div><label class="f" for="an-m">Audit</label><select id="an-m"><option value="">General</option>${Object.entries(MODULES).map(([k,m])=>`<option value="${k}" ${d.module===k?"selected":""}>${m.name}</option>`).join("")}</select></div>
         <div><label class="f" for="an-d">Department</label><select id="an-d">${DEPARTMENTS.filter(x=>x!=="Other").concat(d.dept&&!DEPARTMENTS.includes(d.dept)?[d.dept]:[]).map(x=>`<option ${d.dept===x?"selected":""}>${esc(x)}</option>`).join("")}<option>Hospital-wide</option></select></div></div>
       <label class="f" for="an-i">Issue found</label><textarea id="an-i">${esc(d.issue||"")}</textarea>
-      <label class="f" for="an-a">Action to take</label><textarea id="an-a" placeholder="e.g. Hand hygiene refresher for night-shift nurses, re-audit in 2 weeks"></textarea>
-      <div class="row"><div><label class="f" for="an-o">Owner</label><input type="text" id="an-o" placeholder="e.g. ICU head nurse"></div>
-        <div><label class="f" for="an-due">Due date</label><input type="date" id="an-due"></div></div>
+      <label class="f" for="an-a">Action to take</label><textarea id="an-a" placeholder="e.g. Hand hygiene refresher for night-shift nurses, re-audit in 2 weeks">${esc(d.action||"")}</textarea>
+      <div class="row"><div><label class="f" for="an-o">Owner</label><input type="text" id="an-o" placeholder="e.g. ICU head nurse" value="${esc(d.owner||"")}"></div>
+        <div><label class="f" for="an-due">Due date</label><input type="date" id="an-due" value="${d.due||""}"></div></div>
       ${errHtml()}<div style="margin-top:16px"><button class="btn block" data-a="saveaction">Save action</button></div>
     </div></div>`;
 }
@@ -858,8 +978,8 @@ function vActionNew(){
 /* =====================================================================
    PART 2: DEVICE CARE BUNDLES AND HAI SCREENING
    ===================================================================== */
-const BUNDLE_UNITS=["ICU","CCU","General Ward (3rd Floor)","ER","Day Care Unit"];
-const BEDS={"ICU":rng(1,35),"CCU":rng(1,7),"General Ward (3rd Floor)":rng(300,380),"ER":[...rng(1,3,"CPR "),...rng(1,20)],"Day Care Unit":rng(1,9)};
+const BUNDLE_UNITS=["ICU","Pediatric ICU","CCU","General Ward (3rd Floor)","ER","Day Care Unit"];
+const BEDS={"ICU":rng(1,35),"Pediatric ICU":rng(1,21),"CCU":rng(1,7),"General Ward (3rd Floor)":rng(300,380),"ER":[...rng(1,3,"CPR "),...rng(1,20)],"Day Care Unit":rng(1,9)};
 const bedSelect=(id,unit,val)=>{const l=BEDS[unit]||[],opts=val&&!l.includes(val)?[val,...l]:l;
   return `<select id="${id}" data-bind="bed"><option value="">Select bed</option>${opts.map(b=>`<option ${val===b?"selected":""}>${b}</option>`).join("")}</select>`;};
 const PLACES=["This unit","Operating room","ER","Another unit","Another hospital"];
@@ -897,7 +1017,27 @@ const DEV={
       {k:"sed",t:"Daily sedation interruption and assessment of readiness to extubate"},
       {k:"pud",t:"Peptic ulcer disease prophylaxis"},
       {k:"dvt",t:"DVT prophylaxis (unless contraindicated)"},
-      {k:"oral",t:"Daily oral care with appropriate antiseptic"}]}};
+      {k:"oral",t:"Daily oral care with appropriate antiseptic"}]},
+  pv:{name:"Ventilator, pediatric or neonatal",hai:"PedVAE",specimen:"Respiratory",hex:"#3E8E9E",multi:false,
+    ins:[],
+    maint:[
+      {k:"hh",t:"Hand hygiene"},
+      {k:"hob",t:"Semi-recumbent position",hint:"Neonates 15 to 30 degrees; infants and older children 30 to 45 degrees"},
+      {k:"mouth",t:"Mouth rinse with an appropriate solution",hint:"Every 2 to 4 hours. Pediatric: normal saline or sterile water. Neonates: maternal colostrum if available, or sterile water"},
+      {k:"circuit",t:"Appropriate ventilator circuit care"},
+      {k:"ext",t:"Daily assessment of readiness to extubate"}]}};
+const BIRTH_WT=["Under 750 g","751 to 1000 g","1001 to 1500 g","1501 to 2500 g","Over 2500 g"];
+/* Al-Sobh surgical bundle form: once per operation */
+const SURG_ITEMS=[
+  {k:"abx_sel",t:"Prophylactic antibiotic selection per MOH guidance for surgical prophylaxis"},
+  {k:"abx_time",t:"Timely administration: 30 minutes to 1 hour before incision",hint:"Vancomycin and fluoroquinolones within 2 hours before incision"},
+  {k:"abx_stop",t:"Timely discontinuation after incisional closure"},
+  {k:"hair",t:"Appropriate hair removal",hint:"Do not remove hair unless needed. If needed, remove outside the OR by clipping"},
+  {k:"glucose",t:"Post-operative blood glucose kept at 110 to 150 mg/dl for the first 2 days"},
+  {k:"temp",t:"Normothermia during the perioperative period: temperature above 35.5 °C"},
+  {k:"prep",t:"Appropriate antiseptic solution",hint:"Chlorhexidine-alcohol or povidone-iodine-alcohol"}];
+const surgOk=x=>!Object.values(x.items||{}).includes("n");
+const HAI_NAME={uc:"CAUTI",cl:"CLABSI",mv:"VAE",pv:"PedVAE",ssi:"SSI"};
 /* Al-Sobh "CAUTIoN strategy" adherence monitoring tool: once per catheter, not daily */
 const ADH_ITEMS=[
   {k:"a1",t:"The indwelling catheter is being used for an appropriate indication"},
@@ -917,7 +1057,7 @@ const adhRate=x=>{const v=Object.values(x.items),o=v.filter(y=>y!=="na");return{
 const CL_TYPES=["Non-tunnelled CVC","Tunnelled CVC","PICC","Hemodialysis catheter","Other"];
 const CL_SITES=["Subclavian","Internal jugular","Femoral","Arm (PICC)","Other"];
 const MV_ROUTES=["Endotracheal tube","Tracheostomy"];
-const SPECIMENS=[["Urine","uc"],["Blood","cl"],["Respiratory","mv"],["Other",null]];
+const SPECIMENS=[["Urine","uc"],["Blood","cl"],["Respiratory","mv"],["Wound or surgical site","ssi"],["Other",null]];
 const CASE_STATUS=["Under review","Confirmed HAI","Not HAI"];
 
 /* ---------- date helpers (local calendar days) ---------- */
@@ -954,18 +1094,27 @@ function assess(ev){
   const p=ptOf(ev.patientId),E=ev.date,type=SPECIMENS.find(s=>s[0]===ev.specimen)?.[1];
   const hd=p?hospDay(p,E):null;
   const out={hd,type,deviceId:null,kind:"info",label:"",why:""};
+  if(type==="ssi"){
+    const pr=S.surg.filter(x=>x.patientId===ev.patientId&&x.date<=E).sort((a,b)=>b.date.localeCompare(a.date));
+    const hit=pr.find(x=>dayDiff(x.date,E)+1<=(x.implant==="Yes"?90:30));
+    if(hit){out.kind="flag";out.procId=hit.id;out.label="Possible SSI";
+      out.why=`${hit.procedure} on ${fmt(hit.date)}; the date of event is post-operative day ${dayDiff(hit.date,E)+1}, inside the ${hit.implant==="Yes"?"90":"30"}-day surveillance window. Apply the SSI criteria.`;return out;}
+    out.label=pr.length?"Outside the SSI window":"No surgical procedure recorded";
+    out.why=pr.length?`The last recorded procedure was on ${fmt(pr[0].date)}, outside the 30-day window (90 days with an implant).`:"Record the operation on the patient's page to screen this culture for SSI.";return out;}
   if(hd!==null&&hd<3){out.kind="poa";out.label="Present on admission window";
     out.why=`Date of event is hospital day ${hd}. Events before day 3 of admission fall in the present-on-admission window and are not counted as HAI.`;return out;}
   if(!type){out.label="Not linked to a monitored device";out.why="Specimen type is not linked to a urinary catheter, central line or ventilator. Assess for other HAI types.";return out;}
-  const cands=devsOf(ev.patientId).filter(d=>d.type===type&&d.insertDate<=E);
+  const types=type==="mv"?["mv","pv"]:[type];
+  const cands=devsOf(ev.patientId).filter(d=>types.includes(d.type)&&d.insertDate<=E);
   for(const d of cands){
     const daysOnE=devDay(d,d.removed&&d.removed<E?d.removed:E);
     const inPlace=!d.removed||d.removed>=addDays(E,-1);
     if(inPlace&&daysOnE>2){
-      out.kind="flag";out.deviceId=d.id;out.label=`Possible ${DEV[type].hai}`;
+      const T=d.type;out.type=T;
+      out.kind="flag";out.deviceId=d.id;out.label=`Possible ${DEV[T].hai}`;
       out.why=d.removed&&d.removed<E
-        ?`${DEV[type].name} was in place ${daysOnE} days and removed on ${fmt(d.removed)}, the day before the date of event, so it still counts. Apply the full ${DEV[type].hai} criteria.`
-        :`${DEV[type].name} in place for more than 2 days on the date of event (device day ${devDay(d,E)}). Apply the full ${DEV[type].hai} criteria.`;
+        ?`${DEV[T].name} was in place ${daysOnE} days and removed on ${fmt(d.removed)}, the day before the date of event, so it still counts. Apply the full ${DEV[T].hai} criteria.`
+        :`${DEV[T].name} in place for more than 2 days on the date of event (device day ${devDay(d,E)}). Apply the full ${DEV[T].hai} criteria.`;
       return out;
     }
   }
@@ -984,7 +1133,7 @@ function devPill(d){
 function devPill1(d){
   if(d.removed)return `<span class="pill watch" style="--c:${DEV[d.type].hex}">${DEV[d.type].name} removed ${fmt(d.removed)}: watch window to ${fmt(addDays(d.removed,1))}</span>`;
   const done=checkedToday(d);
-  return `<span class="pill ${done?"done":"due"}" style="--c:${DEV[d.type].hex}">${DEV[d.type].name}, day ${devDay(d)}: ${done?"checked":"check due"}</span>`;
+  return `<span class="pill ${done?"done":"due"}" style="--c:${DEV[d.type].hex}">${DEV[d.type].name}, day ${devDay(d)}: ${done?"checked":"check due"}</span>${needsReview(d)?`<span class="pill long">Day ${devDay(d)}: still needed?</span>`:""}`;
 }
 function vRound(){
   const r=S.round;
@@ -994,7 +1143,7 @@ function vRound(){
   const review=S.events.filter(e=>e.status==="Under review"&&assess(e).kind==="flag").length;
   return `<div class="wrap wide">${bcrumb("")}
     <h1>${esc(r.unit)} round</h1>
-    <p class="lead">${fmt(today())}. ${act.length} ${act.length===1?"patient":"patients"}, ${devs.length} active ${devs.length===1?"device":"devices"}, ${due?`<b style="color:var(--stop)">${due} ${due===1?"check":"checks"} due</b>`:"all checks done"}.</p>
+    <p class="lead">${fmt(today())}. ${act.length} ${act.length===1?"patient":"patients"}, ${devs.length} active ${devs.length===1?"device":"devices"}, ${due?`<b style="color:var(--stop)">${due} ${due===1?"check":"checks"} due</b>`:"all checks done"}${devs.filter(needsReview).length?`, <b style="color:#6B4A00">${devs.filter(needsReview).length} to review for removal</b>`:""}.</p>
     <div class="chips" role="group" aria-label="Unit">${allowedUnits().map(u=>`<button class="chip" aria-pressed="${r.unit===u}" data-a="unit" data-v="${u}">${u}</button>`).join("")}</div>
     <div class="row" style="margin-top:14px;align-items:center">
       <div style="flex:0 0 auto"><button class="btn" data-a="newpt">Add patient</button></div>
@@ -1066,10 +1215,10 @@ function parseSticker(text,nameText){
   const after=(re)=>{const l=lines.find(x=>re.test(x));return l?l.replace(new RegExp(".*?"+re.source+"\\s*[:#.\\-]?\\s*","i"),"").trim():"";};
   /* label first, then pattern */
   const mrnL=after(/\b(mr[nm]|m\.r\.n|file\s*(no|number)|medical\s*record(\s*(no|number))?)/i);
-  if(mrnL){const raw=mrnL.split(/\s{2,}|\s(?=[A-Za-z]{3})/)[0],v=digitsOnly(raw);if(/^6\d{6}$/.test(v))out.mrn=v;else if(raw)bad.push(`MRN "${raw}"`);}
+  if(mrnL){const raw=mrnL.split(/\s{2,}|\s(?=[A-Za-z]{3})|\s*[,;]\s*/)[0],v=digitsOnly(raw);if(/^6\d{6}$/.test(v))out.mrn=v;else if(raw&&!raw.includes(UNSURE))bad.push(`MRN "${raw}"`);}
   if(!out.mrn){const m=t.match(/(?<!\d)6\d{6}(?!\d)/);if(m)out.mrn=m[0];}
   const idL=after(/\b(id|national\s*id|iqama)\s*(no\.?|number|#)?/i);
-  if(idL){const raw=idL.split(/\s{2,}|\s(?=[A-Za-z]{3})/)[0],v=digitsOnly(raw);if(/^\d{10}$/.test(v))out.idNo=v;else if(raw)bad.push(`ID "${raw}"`);}
+  if(idL){const raw=idL.split(/\s{2,}|\s(?=[A-Za-z]{3})|\s*[,;]\s*/)[0],v=digitsOnly(raw);if(/^\d{10}$/.test(v))out.idNo=v;else if(raw&&!raw.includes(UNSURE))bad.push(`ID "${raw}"`);}
   if(!out.idNo){const m=t.match(/(?<!\d)[12]\d{9}(?!\d)/);if(m)out.idNo=m[0];}
   const dobL=after(/(date\s*of\s*birth|d\.?o\.?b|birth\s*date|b\.?d\.?)/i);
   const dobD=dobL?findDates(dobL):[];
@@ -1080,7 +1229,11 @@ function parseSticker(text,nameText){
   const nl=nlines.find(x=>/\b(patient\s*name|name)\b/i.test(x));
   let nm=nl?nl.replace(/.*?\b(patient\s*name|name)\b\s*[:#.\-]?\s*/i,"").trim():"";
   if(!nm)nm=nlines.find(l=>/^[A-Za-z][A-Za-z' .-]{5,}$/.test(l)&&l.split(/\s+/).length>=2&&!/(hospital|record|mrn|dob|date|ward|room|bed|doctor|dr\b|test|sample)/i.test(l))||"";
-  nm=nm.replace(/[^A-Za-z\u0600-\u06FF' .-]/g," ").replace(/\s+/g," ").trim();if(nm.length>=4&&nm.split(" ").length>=2)out.name=nm;
+  nm=nm.split(/\s*[,;|]\s*|\s+(?=(?:id|mrn|mrm|m\.r\.n|dob|d\.o\.b|date|sex|gender|age|file|national|iqama)\b)/i)[0]||"";
+  if(nm.includes(UNSURE))nm="";
+  nm=nm.replace(/[^A-Za-z\u0600-\u06FF' .-]/g," ").replace(/\s+/g," ").trim();
+  if(nm===nm.toLowerCase()||nm===nm.toUpperCase())nm=nm.toLowerCase().replace(/(^|[\s'-])([a-z])/g,(m,a,b)=>a+b.toUpperCase());
+  if(nm.length>=4&&nm.split(" ").length>=2)out.name=nm;
   const sx=after(/\b(sex|gender)\b/i);if(/^f/i.test(sx))out.sex="Female";else if(/^m/i.test(sx))out.sex="Male";
   if(bad.length)out._bad=bad;
   return out;
@@ -1095,11 +1248,20 @@ function ocrLines(data){
   if(out.length)return out;
   return (data.text||"").split("\n").filter(Boolean).map(t=>({text:t,words:[{text:t,confidence:data.confidence??0}]}));
 }
+/* word by word: an unsure word is blanked out (⍰), so only the field it belongs to is lost, not the whole line */
+const UNSURE="⍰";
+/* a token that is only fairly certain is still used when it fits a strict hospital format exactly; the field is then flagged for a careful check */
+const OCR_FAIR=50;
+function strictToken(w){const t=w.replace(/^[^A-Za-z0-9]+|[^0-9]+$/g,"").replace(/^(id|mrn|mrm|dob)[:#.]?/i,"");
+  return /^6\d{6}$/.test(t)||/^\d{10}$/.test(t)||(/^\d{1,2}[-\/.]\d{1,2}[-\/.]\d{4}$/.test(t)&&findDates(t).length>0);}
 function sureText(data,min=OCR_MIN){
-  const lines=ocrLines(data);let dropped=0;const weak=[];
-  const kept=lines.filter(l=>{const w=l.words.filter(x=>/[A-Za-z0-9]/.test(x.text)&&!OCR_LABEL.test(x.text));if(!w.length)return true;
-    const bad=w.filter(x=>x.confidence<min);if(bad.length){dropped++;weak.push(...bad.map(x=>x.text));return false;}return true;}).map(l=>l.text.trim());
-  return{text:kept.join("\n"),dropped,total:lines.length,weak};
+  const lines=ocrLines(data);let dropped=0;const weak=[],fair=[];
+  const text=lines.map(l=>{let hit=false;const t=l.words.map(x=>{const w=x.text;
+      if(!/[A-Za-z0-9]/.test(w)||OCR_LABEL.test(w)||x.confidence>=min)return w;
+      if(x.confidence>=OCR_FAIR&&strictToken(w)){fair.push(w);return w;}
+      hit=true;weak.push(`${w} (${Math.round(x.confidence)}%)`);return UNSURE;}).join(" ");
+    if(hit)dropped++;return t;}).join("\n");
+  return{text,dropped,total:lines.length,weak,fair};
 }
 /* names are checked by eye anyway, so they get a lower bar than numbers and dates */
 const OCR_NAME_MIN=60;
@@ -1125,7 +1287,13 @@ async function handleScan(kind,file){
       let best=await read(prepImage(img));
       if(Object.keys(best.found).filter(k=>k!=="_bad").length<3){scanMsg("Reading again from the original photo…",{busy:true,bad:false});const b2=await read(img);
         if(Object.keys(b2.found).filter(k=>k!=="_bad").length>Object.keys(best.found).filter(k=>k!=="_bad").length)best=b2;}
-      found=best.found;S.scan={...(S.scan||{}),raw:best.raw,weak:best.st.weak};
+      found=best.found;
+      const fair=best.st.fair||[],chk=[];
+      if(found.mrn&&fair.some(w=>w.replace(/\D/g,"").includes(found.mrn)))chk.push("MRN");
+      if(found.idNo&&fair.some(w=>w.replace(/\D/g,"").includes(found.idNo)))chk.push("ID");
+      if(found.dob&&fair.some(w=>findDates(w).includes(found.dob)))chk.push("date of birth");
+      if(found.admitDate&&fair.some(w=>findDates(w).includes(found.admitDate)))chk.push("admission date");
+      S.scan={...(S.scan||{}),raw:best.raw,weak:best.st.weak,chk};
       if(!Object.keys(found).length&&best.st.dropped)return scanMsg("Parts of the photo were read with low certainty, so nothing was filled. Open \"What the reader saw\" below to check, then retake the photo straight on and in good light, or type the details.",{bad:true,busy:false});
       const codes=await readBarcode(img).catch(()=>[]);const c=codes.map(x=>x.match(/6\d{6}/)?.[0]).find(Boolean);if(c)found.mrn=c;
       if(!Object.keys(found).length)return scanMsg("No patient details found in that photo. Try a sharper photo in good light, or type the details.",{bad:true,busy:false});}
@@ -1133,12 +1301,12 @@ async function handleScan(kind,file){
     if(!Object.keys(found).length)return scanMsg(bad.length?`Read ${bad.join(" and ")}, but it does not match the hospital format, so nothing was filled. Check the sticker and type the details.`:"No patient details found in that photo.",{bad:true,busy:false});
     Object.assign(S.form,found);
     const names={mrn:"MRN",idNo:"ID",name:"name",dob:"date of birth",admitDate:"admission date",sex:"sex"};
-    scanMsg(`Filled: ${Object.keys(found).map(k=>names[k]).join(", ")}. Check each field before saving.${bad.length?` Not filled: ${bad.join(" and ")} does not match the hospital format (MRN 7 digits starting with 6, ID 10 digits).`:""}`,{busy:false,bad:false,filled:Object.keys(found)});
+    scanMsg(`Filled: ${Object.keys(found).map(k=>names[k]).join(", ")}. Check each field before saving.${S.scan?.chk?.length?` Read with less certainty, check carefully: ${S.scan.chk.join(", ")}.`:""}${S.scan?.weak?.length?` Left out because they were unclear: ${S.scan.weak.join(", ")}.`:""}${bad.length?` Not filled: ${bad.join(" and ")} does not match the hospital format (MRN 7 digits starting with 6, ID 10 digits).`:""}`,{busy:false,bad:false,filled:Object.keys(found)});
   }catch(e){scanMsg("The reader could not load. It needs an internet connection the first time; otherwise type the details.",{bad:true,busy:false});}
 }
 function devCard(d){
   const m=DEV[d.type],ok=insOk(d),last=d.checks.slice().sort((a,b)=>b.date.localeCompare(a.date))[0];
-  const det=d.type==="cl"?`${d.clType}, ${d.clSite}, ${d.clDuration}`:d.type==="mv"?d.route:(d.size?`Size ${esc(d.size)} Fr`:"");
+  const det=d.type==="cl"?`${d.clType}, ${d.clSite}, ${d.clDuration}`:d.type==="mv"||d.type==="pv"?[d.route,d.birthWt].filter(Boolean).join(", "):(d.size?`Size ${esc(d.size)} Fr`:"");
   return `<div class="dev" style="--c:${m.hex}">
     <div class="row" style="align-items:start"><div style="flex:3">
       <b>${m.name}${det?`<span class="meta"> (${esc(det)})</span>`:""}</b>
@@ -1159,7 +1327,7 @@ function vPatient(){
   const p=ptOf(S.pid);if(!p)return vRound();
   const ds=devsOf(p.id),act=ds.filter(d=>!d.removed),old=ds.filter(d=>d.removed).sort((a,b)=>b.removed.localeCompare(a.removed));
   const evs=S.events.filter(e=>e.patientId===p.id).sort((a,b)=>b.date.localeCompare(a.date));
-  const canAdd=t=>p.status==="active"&&(DEV[t].multi||!act.some(d=>d.type===t));
+  const canAdd=t=>p.status==="active"&&(DEV[t].multi||!act.some(d=>d.type===t||(["mv","pv"].includes(t)&&["mv","pv"].includes(d.type))));
   return `<div class="wrap wide">${bcrumb(`Bed ${esc(p.bed)}`)}
     <div class="row" style="align-items:end"><div style="flex:3"><h1>${esc(p.name)}</h1>
       <p class="lead" style="margin:0">${esc(p.unit)}, bed ${esc(p.bed)}. MRN ${esc(p.mrn)}${p.idNo?`, ID ${esc(p.idNo)}`:""}${p.sex?`, ${p.sex.toLowerCase()}`:""}${p.dob?`, born ${fmt(p.dob)}`:""}.<br>
@@ -1169,6 +1337,12 @@ function vPatient(){
     <h2>Active devices</h2>
     ${act.length?act.map(devCard).join(""):`<div class="card">No active devices.</div>`}
     ${p.status==="active"?`<div class="row" style="margin-top:10px">${Object.entries(DEV).map(([k,m])=>canAdd(k)?`<div style="flex:0 0 auto"><button class="btn ghost" style="border-left:5px solid ${m.hex}" data-a="adddev" data-t="${k}">Add ${m.name.toLowerCase()}</button></div>`:"").join("")}</div>`:""}
+    <h2>Surgical procedures</h2>
+    ${(()=>{const l=S.surg.filter(x=>x.patientId===p.id).sort((a,b)=>b.date.localeCompare(a.date));
+      return l.length?l.map(x=>{const pod=dayDiff(x.date,today())+1,win=x.implant==="Yes"?90:30;return `<div class="dev" style="--c:#6B5B3E"><b>${esc(x.procedure)}<span class="meta">, ${fmt(x.date)}${x.implant==="Yes"?", implant":""}</span></b>
+        <p class="meta">Surgical bundle: <span class="tag ${surgOk(x)?"ok":"no"}">${surgOk(x)?"Compliant":"Not compliant"}</span>${pod<=win?` <span class="pill watch" style="--c:#6B5B3E">SSI surveillance to ${fmt(addDays(x.date,win-1))}</span>`:""}</p>
+        ${Object.entries(x.items||{}).filter(([k,v])=>v==="n").length?`<p class="meta">Not done: ${SURG_ITEMS.filter(i=>x.items[i.k]==="n").map(i=>esc(i.t)).join("; ")}</p>`:""}</div>`;}).join(""):`<div class="card">No operations recorded.</div>`;})()}
+    ${p.status==="active"?`<div style="margin-top:10px"><button class="btn ghost" style="border-left:5px solid #6B5B3E" data-a="newsurg">Record an operation and surgical bundle</button></div>`:""}
     <h2>Positive cultures and HAI screening</h2>
     ${evs.length?evs.map(e=>{const a=assess(e);return `<div class="dev" style="--c:${a.kind==="flag"?"var(--stop)":"var(--line)"}">
       <b>${esc(e.specimen)} culture, ${fmt(e.date)}: ${esc(e.organism)}${e.count?` (${esc(e.count)})`:""}</b>
@@ -1186,7 +1360,8 @@ function vDevNew(){
     <div class="row"><div><label class="f" for="di">${f.type==="mv"?"Intubation / connection date":"Insertion date"}</label><input type="date" id="di" data-bind="insertDate" value="${f.insertDate}" max="${today()}"></div>
       <div><label class="f" for="dpl">Place of insertion</label><select id="dpl" data-bind="place">${PLACES.map(x=>`<option ${f.place===x?"selected":""}>${x}</option>`).join("")}</select></div></div>
     ${f.type==="cl"?`${chipsBlock("Catheter type","clType",CL_TYPES,f)}${chipsBlock("Site","clSite",CL_SITES,f)}${chipsBlock("Duration","clDuration",["Temporary","Permanent"],f)}`:""}
-    ${f.type==="mv"?chipsBlock("Airway","route",MV_ROUTES,f):""}
+    ${f.type==="mv"||f.type==="pv"?chipsBlock("Airway","route",MV_ROUTES,f):""}
+    ${f.type==="pv"?chipsBlock("Birth weight (neonates only)","birthWt",BIRTH_WT,f):""}
     ${f.type==="uc"?`<label class="f" for="dsz">Catheter size <small>(optional, Fr)</small></label><input type="text" id="dsz" data-bind="size" value="${esc(f.size)}" inputmode="numeric">`:""}
     ${m.ins.length?`${chipsBlock("Was the insertion observed or reliably documented?","insObserved",["Yes","No"],f)}
       <p class="hint">Choose No if the device was inserted elsewhere or before the round, and the insertion bundle will be recorded as not observed.</p>
@@ -1222,6 +1397,7 @@ function vCheck(){
   return `<div class="wrap">${bcrumb("Daily check",`<span>/</span><button data-a="openpt" data-id="${p.id}">Bed ${esc(p.bed)}</button>`)}
     <h1 style="border-left:6px solid ${m.hex};padding-left:10px">${m.name}: daily check</h1>
     <p class="lead">${esc(p.name)}, bed ${esc(p.bed)}. Device day ${devDay(d,f.date)}.</p>
+    ${REVIEW_DAY[d.type]&&devDay(d,f.date)>=REVIEW_DAY[d.type]?`<div class="draft" style="background:#FFF1CC;border-color:#E3B341"><b>Day ${devDay(d,f.date)} of this ${m.name.toLowerCase()}.</b> Is it still needed? Every extra day raises the risk of ${m.hai}. ${d.type==="uc"?"Common reasons to keep it: urinary retention or obstruction, accurate output monitoring in the critically ill, peri-operative use, stage 3 or 4 sacral wounds in incontinent patients, end-of-life comfort.":"Remove it as soon as it is no longer essential, and review peripheral access instead."}</div>`:""}
     <label class="f" for="cd">Date</label><input type="date" id="cd" data-bind="date" data-rerender value="${f.date}" min="${d.insertDate}" max="${today()}">
     <label class="f">Maintenance bundle</label>${ynBlock(m.maint,f)}
     ${noteBlock(f)}
@@ -1253,6 +1429,27 @@ function adhcsv(){
   const text="\uFEFF"+[head,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const url=URL.createObjectURL(new Blob([text],{type:"text/csv"}));const l=document.createElement("a");l.href=url;l.download=`ipc-uc-adherence-${today()}.csv`;l.click();URL.revokeObjectURL(url);
 }
+function vSurg(){
+  const f=S.form,p=ptOf(S.pid);
+  return `<div class="wrap">${bcrumb("Surgical bundle",`<span>/</span><button data-a="openpt" data-id="${p.id}">Bed ${esc(p.bed)}</button>`)}
+    <h1 style="border-left:6px solid #6B5B3E;padding-left:10px">Operation and surgical bundle</h1>
+    <p class="lead">${esc(p.name)}, bed ${esc(p.bed)}. Recorded once per operation. Positive wound cultures within 30 days (90 with an implant) are screened for SSI.</p>
+    <label class="f" for="sp1">Operative procedure</label><input type="text" id="sp1" data-bind="procedure" value="${esc(f.procedure)}" placeholder="e.g. Laparoscopic cholecystectomy">
+    <div class="row"><div><label class="f" for="sp2">Date of operation</label><input type="date" id="sp2" data-bind="date" value="${f.date}" max="${today()}"></div>
+      <div>${chipsBlock("Implant left in place","implant",["Yes","No"],f)}</div></div>
+    <label class="f">Bundle elements</label>${ynBlock(SURG_ITEMS,f)}
+    ${noteBlock(f)}
+    ${errHtml()}<div style="margin-top:16px"><button class="btn block" data-a="savesurg">Save operation</button></div></div>`;
+}
+async function saveSurg(){
+  const f=S.form;
+  if(!f.procedure.trim())return fail("Enter the operative procedure.");
+  if(!f.date||f.date>today())return fail("Enter the date of the operation.");
+  if(!f.implant)return fail("Say whether an implant was left in place.");
+  const i=SURG_ITEMS.findIndex(x=>!f.items[x.k]);if(i>-1)return fail(`Answer element ${i+1} of the bundle.`);
+  S.surg.push({id:uid(),patientId:S.pid,procedure:f.procedure.trim(),date:f.date,implant:f.implant,items:{...f.items},note:f.note,by:S.user.name});
+  await sset("ipc-surg",S.surg);go("patient",{pid:S.pid});toast(surgOk(S.surg.at(-1))?"Operation saved: bundle compliant":"Operation saved: bundle not compliant",!surgOk(S.surg.at(-1)));
+}
 function vCulture(){
   const f=S.form,p=ptOf(S.pid);
   return `<div class="wrap">${bcrumb("Positive culture",`<span>/</span><button data-a="openpt" data-id="${p.id}">Bed ${esc(p.bed)}</button>`)}
@@ -1261,6 +1458,7 @@ function vCulture(){
     ${chipsBlock("Specimen","specimen",SPECIMENS.map(s=>s[0]),f)}
     <label class="f" for="cdt">Date specimen collected <small>(date of event)</small></label><input type="date" id="cdt" data-bind="date" value="${f.date}" max="${today()}">
     <label class="f" for="cor">Organism(s)</label><input type="text" id="cor" data-bind="organism" value="${esc(f.organism)}" placeholder="e.g. Klebsiella pneumoniae">
+    ${f.specimen==="Wound or surgical site"?`<p class="hint">Screened against the patient's recorded operations for SSI.</p>`:""}
     ${f.specimen==="Urine"?`<label class="f" for="ccn">Colony count <small>(optional)</small></label><input type="text" id="ccn" data-bind="count" value="${esc(f.count)}" placeholder="e.g. ≥100,000 CFU/ml">`:""}
     ${noteBlock(f,"Symptoms, temperature, clinical context")}
     ${errHtml()}<div style="margin-top:16px"><button class="btn block" data-a="savecult">Save and screen</button></div></div>`;
@@ -1270,7 +1468,7 @@ function vCases(){
   return `<div class="wrap wide">${bcrumb("HAI screening")}
     <h1>HAI screening</h1>
     <p class="lead">Every positive culture is screened against device timing (device in place more than 2 days, and present on the date of event or the day before). Flagged cases need review against the full definitions. Only confirmed cases count in the infection rates.</p>
-    <div class="draft">Full CAUTI, CLABSI and VAE criteria checklists will be added here once the definitions are sent.</div>
+    <p class="hint">Open a flagged case to work through its criteria checklist (CAUTI, CLABSI, VAE, PedVAE or SSI).</p>
     ${evs.length?`<div class="scroll"><table><thead><tr><th>Date</th><th>Patient</th><th>Culture</th><th>Screen</th><th>Status</th><th></th></tr></thead><tbody>
       ${evs.map(e=>{const p=ptOf(e.patientId),a=assess(e);return `<tr><td style="white-space:nowrap">${fmt(e.date)}</td><td>${esc(p?.name)}<br><small>${esc(p?.unit)}, bed ${esc(p?.bed)}</small></td>
         <td>${esc(e.specimen)}: ${esc(e.organism)}</td><td><span class="tag ${a.kind==="flag"?"no":"mid"}">${a.label}</span></td>
@@ -1279,6 +1477,75 @@ function vCases(){
       :`<div class="card">No cultures logged yet. Log them from the patient's page during the round.</div>`}
   </div>`;
 }
+/* DRAFT criteria based on the NHSN definitions; replace with the hospital's definitions when they are sent */
+const CRIT={
+  uc:{name:"CAUTI (symptomatic UTI, SUTI 1a)",groups:[
+    {k:"sx",t:"At least one sign or symptom",any:[["fever","Fever above 38.0 °C"],["supra","Suprapubic tenderness"],["cva","Costovertebral angle pain or tenderness"],["urg","Urgency, frequency or dysuria (only if the catheter was removed the day before)"]]},
+    {k:"cx",t:"Urine culture",all:[["cfu","No more than two species, with at least one bacterium at 100,000 CFU/ml or more"]]}],
+    excl:[["yeast","The only organisms are yeasts, moulds or parasites"],["many","More than two species of organisms"]]},
+  cl:{name:"CLABSI (laboratory-confirmed bloodstream infection)",groups:[
+    {k:"path",t:"Choose LCBI 1 or LCBI 2",any:[["lcbi1","LCBI 1: a recognised pathogen grown from one or more blood cultures"],["lcbi2","LCBI 2: the same common commensal from two or more blood cultures drawn on separate occasions, on the same or consecutive days"]]},
+    {k:"sx",t:"For LCBI 2 only: at least one sign or symptom",any:[["fever","Fever above 38.0 °C"],["chills","Chills"],["hypo","Hypotension"],["infant","Infants under 1 year: hypothermia below 36 °C, apnoea or bradycardia"]],only:"lcbi2"}],
+    excl:[["secondary","The bloodstream infection is secondary to an infection at another site"],["mbi","Meets MBI-LCBI or another exclusion in the definitions"]]},
+  mv:{name:"VAE (ventilator-associated event)",tiers:true,groups:[
+    {k:"vac",t:"VAC: after 2 or more days of stable or improving oxygenation, a sustained rise for 2 or more days",any:[["peep","Daily minimum PEEP up by 3 cmH2O or more"],["fio2","Daily minimum FiO2 up by 0.20 (20 points) or more"]]},
+    {k:"ivac",t:"IVAC: within 2 days of the start of worsening, both",all:[["temp","Temperature above 38 °C or below 36 °C, or WBC 12,000 or more or 4,000 or less"],["abx","A new antimicrobial started and continued for 4 or more days"]]},
+    {k:"pvap",t:"PVAP: in the same window, at least one",any:[["pur","Purulent respiratory secretions with a positive culture"],["quant","Positive quantitative or semi-quantitative culture at the threshold"],["other","Other positive test in the definitions (pleural fluid, lung histology, Legionella, viral tests)"]]}],excl:[]},
+  pv:{name:"PedVAE (pediatric ventilator-associated event)",groups:[
+    {k:"ox",t:"After 2 or more days of stable or improving oxygenation, a rise sustained for 1 or more days",any:[["fio2","Daily minimum FiO2 up by 0.25 (25 points) or more"],["map","Daily minimum mean airway pressure up by 4 cmH2O or more"]]}],
+    excl:[["neo","The patient is a neonate (PedVAE does not apply to neonatal units)"]]},
+  ssi:{name:"SSI (surgical site infection)",groups:[
+    {k:"level",t:"Depth of infection",pick:[["sup","Superficial incisional: skin and subcutaneous tissue, within 30 days"],["deep","Deep incisional: fascia and muscle, within 30 or 90 days"],["organ","Organ or space: deeper than the fascia, within 30 or 90 days"]]},
+    {k:"ev",t:"At least one finding at that depth",any:[["pus","Purulent drainage from the incision, or from a drain placed in the organ or space"],["org","Organism from an aseptically obtained specimen of the site"],["open","Incision opened by the surgeon with pain, tenderness, swelling, redness or heat, or fever for deep SSI"],["abscess","Abscess or other evidence on examination, re-operation, histology or imaging"],["dx","Diagnosed by the surgeon or attending physician (superficial only)"]]}],
+    excl:[["stitch","Stitch abscess only, or localised stab-wound or pin-site infection"]]}};
+function critVerdict(t,c){
+  const C=CRIT[t];if(!C)return null;c=c||{};const has=k=>!!c[k];
+  if(C.excl.some(([k])=>has(k)))return{ok:false,text:"Excluded by the definition"};
+  if(t==="mv"){const vac=has("peep")||has("fio2"),ivac=vac&&has("temp")&&has("abx"),pvap=ivac&&(has("pur")||has("quant")||has("other"));
+    return vac?{ok:true,text:`Meets VAE: ${pvap?"PVAP":ivac?"IVAC":"VAC"}`}:{ok:false,text:"Does not meet VAC yet"};}
+  if(t==="cl"){if(has("lcbi1"))return{ok:true,text:"Meets CLABSI: LCBI 1"};if(has("lcbi2")&&(has("fever")||has("chills")||has("hypo")||has("infant")))return{ok:true,text:"Meets CLABSI: LCBI 2"};return{ok:false,text:"Criteria not met yet"};}
+  if(t==="ssi"){const lv=c.level;if(!lv)return{ok:false,text:"Choose the depth"};if(lv==="sup"?C.groups[1].any.some(([k])=>has(k)):C.groups[1].any.filter(([k])=>k!=="dx").some(([k])=>has(k)))
+      return{ok:true,text:`Meets SSI: ${({sup:"superficial incisional",deep:"deep incisional",organ:"organ or space"})[lv]}`};return{ok:false,text:"Criteria not met yet"};}
+  const ok=C.groups.every(g=>g.only?true:g.all?g.all.every(([k])=>has(k)):g.any.some(([k])=>has(k)));
+  return ok?{ok:true,text:`Meets ${HAI_NAME[t]} criteria`}:{ok:false,text:"Criteria not met yet"};
+}
+function critBlock(t,c){
+  const C=CRIT[t];if(!C)return "";c=c||{};const v=critVerdict(t,c);
+  const box=(k,l)=>`<label class="crit"><input type="checkbox" data-crit="${k}" ${c[k]?"checked":""}> <span>${l}</span></label>`;
+  return `<h2>Criteria: ${C.name}</h2>
+    <div class="card">${C.groups.map(g=>`<p class="crit-h">${g.t}</p>${g.pick?`<div class="chips">${g.pick.map(([k,l])=>`<button class="chip" aria-pressed="${c.level===k}" data-a="critpick" data-v="${k}">${l}</button>`).join("")}</div>`
+        :(g.all||g.any).map(([k,l])=>box(k,l)).join("")}`).join("")}
+      ${C.excl.length?`<p class="crit-h">Exclusions</p>${C.excl.map(([k,l])=>box(k,l)).join("")}`:""}
+      <p style="margin-bottom:0"><span class="tag ${v.ok?"no":"mid"}">${v.text}</span> <small class="hint">Suggested from the boxes ticked. You make the final decision below.</small></p>
+      <div class="draft" style="margin:10px 0 0">Draft criteria based on the NHSN definitions. They will be replaced with the hospital's definitions when sent.</div></div>`;
+}
+/* ---------- cluster alert: the same organism in the same unit in 2 or more patients within 14 days ---------- */
+const orgKey=o=>String(o||"").toLowerCase().replace(/\(.*?\)/g," ").replace(/\b(spp?|species|complex|group)\b\.?/g," ").replace(/[^a-z ]/g," ").split(/\s+/).filter(Boolean).slice(0,2).join(" ");
+function clusters(from=addDays(today(),-60),to=today()){
+  const pts=[];
+  S.events.forEach(e=>{const p=ptOf(e.patientId);if(p&&e.date>=from&&e.date<=to)pts.push({date:e.date,unit:unitAt(p,e.date),org:orgKey(e.organism),orgTxt:e.organism,who:p.mrn||p.id,src:"culture"});});
+  S.mdro.forEach(m=>{if(m.date>=from&&m.date<=to&&m.unit)pts.push({date:m.date,unit:m.unit,org:orgKey(m.organism),orgTxt:`${m.organism}${m.mdroType?` (${m.mdroType})`:""}`,who:m.mrn||m.id,src:"MDRO"});});
+  const out=[],groups={};pts.filter(x=>x.org).forEach(x=>{(groups[x.unit+"|"+x.org]=groups[x.unit+"|"+x.org]||[]).push(x);});
+  for(const [k,l] of Object.entries(groups)){
+    l.sort((a,b)=>a.date.localeCompare(b.date));
+    for(let i=0;i<l.length;i++){const win=l.filter(x=>x.date>=l[i].date&&x.date<=addDays(l[i].date,13)),who=new Set(win.map(x=>x.who));
+      if(who.size>=2){const key=`${k}|${win[0].date}`;if(!out.some(c=>c.unit===l[i].unit&&c.org===l[i].org&&c.last>=win[0].date))
+        out.push({key,unit:l[i].unit,org:l[i].org,orgTxt:win[0].orgTxt,first:win[0].date,last:win.at(-1).date,n:who.size});
+        else{const c=out.find(c=>c.unit===l[i].unit&&c.org===l[i].org&&c.last>=win[0].date);c.last=win.at(-1).date;c.n=Math.max(c.n,who.size);}}}
+  }
+  return out.sort((a,b)=>b.last.localeCompare(a.last));
+}
+const activeClusters=()=>clusters().filter(c=>!(S.settings.ack||{})[c.key]);
+function clusterBanner(){
+  if(!isTeam())return "";const l=activeClusters();if(!l.length)return "";
+  return `<div class="alert-box" role="alert"><b>Possible cluster${l.length>1?"s":""}</b>
+    ${l.map(c=>`<div class="row" style="align-items:center;margin-top:6px"><div style="flex:3">${esc(c.orgTxt)} in <b>${esc(c.unit)}</b>: ${c.n} patients between ${fmt(c.first)} and ${fmt(c.last)}.</div>
+      <div style="flex:0 0 auto"><button class="btn ghost small" data-a="ackcl" data-v="${esc(c.key)}">Mark as reviewed</button></div></div>`).join("")}
+    <p class="hint" style="margin:8px 0 0">Same organism in the same unit in two or more patients within 14 days, from cultures and MDRO cases. Check for a common source and review isolation.</p></div>`;
+}
+/* ---------- device removal prompts ---------- */
+const REVIEW_DAY={uc:3,cl:7};
+const needsReview=d=>!d.removed&&REVIEW_DAY[d.type]&&devDay(d)>=REVIEW_DAY[d.type];
 function vCase(){
   const e=S.events.find(x=>x.id===S.eid),p=ptOf(e.patientId),a=assess(e),d=a.deviceId?devOf(a.deviceId):null;
   return `<div class="wrap">${bcrumb("Review",`<span>/</span><button data-a="nav" data-v="cases">HAI screening</button>`)}
@@ -1289,7 +1556,9 @@ function vCase(){
       ${e.note?`<p class="meta">${esc(e.note)}</p>`:""}
       <p><span class="tag ${a.kind==="flag"?"no":"mid"}">${a.label}</span> ${a.why}</p>
       ${d?`<p class="meta">Device: ${DEV[d.type].name} inserted ${fmt(d.insertDate)}${d.removed?`, removed ${fmt(d.removed)}`:""}. Bundle compliance on its checks: ${pct(d.checks.filter(checkOk).length,d.checks.length)} of ${d.checks.length}.</p>`:""}
+      ${a.procId?(()=>{const x=S.surg.find(y=>y.id===a.procId);return x?`<p class="meta">Operation: ${esc(x.procedure)} on ${fmt(x.date)}${x.implant==="Yes"?", implant":""}. Surgical bundle ${surgOk(x)?"compliant":"not compliant"}.</p>`:"";})():""}
     </div>
+    ${a.kind==="flag"?critBlock(a.type,S.form.criteria):""}
     ${chipsBlock("Review decision","status",CASE_STATUS,S.form)}
     <label class="f" for="rn">Review note</label><textarea id="rn" data-bind="reviewNote" placeholder="Criteria met or not met, reviewer, date">${esc(S.form.reviewNote)}</textarea>
     <div style="margin-top:16px" class="row"><div><button class="btn block" data-a="savecase">Save review</button></div><div style="flex:0 0 auto"><button class="btn danger" data-a="delcase">Delete culture</button></div></div>
@@ -1318,6 +1587,9 @@ function vBDash(){
   const Y=tasks.reduce((t,x)=>t+x.y,0),O=tasks.reduce((t,x)=>t+x.o,0);
   const ours={adh_uc:pctN(Y,O)};
   rows.forEach(r=>{ours["b_"+r.k]=pctN(r.chOk,r.ch.length);ours["i_"+r.k]=pctN(r.insOkN,r.ins.length);ours["r_"+r.k]=r.dd?r.hai/r.dd*1000:null;});
+  const ops=S.surg.filter(x=>inP(x.date)&&inU(uAt(x.patientId,x.date))),opIds=new Set(ops.map(x=>x.id));
+  const ssi=S.events.filter(e=>e.status==="Confirmed HAI").filter(e=>{const a=assess(e);return a.type==="ssi"&&a.kind==="flag"&&opIds.has(a.procId);}).length;
+  ours.b_ssi=pctN(ops.filter(surgOk).length,ops.length);ours.r_ssi=ops.length?ssi/ops.length*100:null;
   const outc={};
   S.patients.filter(p=>p.status==="discharged"&&inP(p.discharged)&&inU(p.unit)).forEach(p=>{const o=p.outcome||"Discharged (outcome not recorded)";outc[o]=(outc[o]||0)+1;});
   S.patients.forEach(p=>(p.transfers||[]).filter(t=>inP(t.date)&&inU(t.from)&&BUNDLE_UNITS.includes(t.to)&&t.to!==t.from).forEach(()=>{const o="Moved to another unit on the round";outc[o]=(outc[o]||0)+1;}));
@@ -1336,8 +1608,12 @@ function vBDash(){
         <td class="c">${r.hai}<small>${r.m.hai}</small></td><td class="c"><b>${r.dd?(r.hai/r.dd*1000).toFixed(2):"–"}</b></td></tr>`).join("")}
     </tbody></table></div>
     <p class="hint">Bundle compliance is all-or-none: a check is compliant only if no element is marked No. An infection dated on a transfer day or the day after is counted in the transferring unit.</p>
+    <h2>Surgical procedures</h2>
+    <div class="scroll"><table><thead><tr><th>Operations</th><th>Surgical bundle</th><th>Confirmed SSI</th><th>SSI rate per 100 operations</th></tr></thead><tbody>
+      <tr><td class="c">${ops.length}</td><td class="c">${pct(ops.filter(surgOk).length,ops.length)}<small>${ops.filter(surgOk).length} of ${ops.length}</small></td><td class="c">${ssi}</td><td class="c"><b>${ops.length?(ssi/ops.length*100).toFixed(1):"–"}</b></td></tr></tbody></table></div>
+    <p class="hint">Operations are counted in the period and unit of the operation; an SSI counts against the operation it follows.</p>
     <h2>Against targets and benchmarks</h2>
-    ${benchTable(["b_uc","b_cl","b_mv","i_uc","i_cl","adh_uc","r_uc","r_cl","r_mv"],ours)}
+    ${benchTable(["b_uc","b_cl","b_mv","b_pv","i_uc","i_cl","adh_uc","b_ssi","r_uc","r_cl","r_mv","r_pv","r_ssi"],ours)}
     <h2>Most failed daily bundle elements</h2>
     <div class="fails">${rows.map(r=>`<div class="card"><h3 style="color:${r.m.hex}">${r.m.name}</h3>${r.fails.length?`<ol>${r.fails.slice(0,3).map(x=>`<li>${esc(x.t)}: failed ${x.no} of ${x.n} (${pct(x.no,x.n)})${x.why}</li>`).join("")}</ol>`:`<p class="hint">No failed elements in this view.</p>`}</div>`).join("")}</div>
     <h2>Urinary catheter adherence monitoring</h2>
@@ -1418,10 +1694,10 @@ async function saveDev(){
   if(!f.insertDate)return fail("Enter the insertion date.");
   if(f.insertDate>today())return fail("The insertion date cannot be in the future.");
   if(f.type==="cl"&&(!f.clType||!f.clSite||!f.clDuration))return fail("Select catheter type, site and duration.");
-  if(f.type==="mv"&&!f.route)return fail("Select the airway.");
+  if((f.type==="mv"||f.type==="pv")&&!f.route)return fail("Select the airway.");
   if(m.ins.length&&!f.insObserved)return fail("Say whether the insertion was observed.");
   if(f.insObserved==="Yes"){const i=m.ins.findIndex(x=>!f.items[x.k]);if(i>-1)return fail(`Answer item ${i+1} of the insertion bundle.`);}
-  const d={id:uid(),patientId:S.pid,type:f.type,insertDate:f.insertDate,place:f.place,clType:f.clType,clSite:f.clSite,clDuration:f.clDuration,route:f.route,size:f.size,
+  const d={id:uid(),patientId:S.pid,type:f.type,insertDate:f.insertDate,place:f.place,clType:f.clType,clSite:f.clSite,clDuration:f.clDuration,route:f.route,size:f.size,birthWt:f.birthWt||"",
     insObserved:m.ins.length?f.insObserved:"N/A",insItems:f.insObserved==="Yes"?{...f.items}:{},removed:null,checks:[],by:S.user.name};
   S.devices.push(d);await persistB();go("patient",{pid:S.pid});toast(`${m.name} added`);
 }
@@ -1472,11 +1748,15 @@ async function handleBundle(a,b){
       if(!confirm(`Remove this ${DEV[d.type].name.toLowerCase()} on ${fmt(r)}?`))return true;d.removed=r;await persistB();go("patient",{pid:d.patientId});toast("Device removed");return true;}
     case "newcult":go("culture",{form:{specimen:"",date:today(),organism:"",count:"",note:""}});return true;
     case "savecult":saveCult();return true;
+    case "newsurg":go("surg",{form:{procedure:"",date:today(),implant:"",items:{},subs:{},note:""}});return true;
+    case "savesurg":saveSurg();return true;
   }
   if(!isTeam())return false;
   switch(a){
-    case "opencase":{const e=S.events.find(x=>x.id===b.dataset.id);go("case",{eid:e.id,form:{status:e.status,reviewNote:e.reviewNote||""}});return true;}
-    case "savecase":{const e=S.events.find(x=>x.id===S.eid);e.status=S.form.status||"Under review";e.reviewNote=S.form.reviewNote;e.reviewedBy=S.user.name;await persistB();go("cases");toast("Review saved");return true;}
+    case "opencase":{const e=S.events.find(x=>x.id===b.dataset.id);go("case",{eid:e.id,form:{status:e.status,reviewNote:e.reviewNote||"",criteria:JSON.parse(JSON.stringify(e.criteria||{}))}});return true;}
+    case "savecase":{const e=S.events.find(x=>x.id===S.eid);e.status=S.form.status||"Under review";e.reviewNote=S.form.reviewNote;e.criteria=S.form.criteria||{};e.reviewedBy=S.user.name;await persistB();go("cases");toast("Review saved");return true;}
+    case "critpick":S.form.criteria=S.form.criteria||{};S.form.criteria.level=b.dataset.v;render();return true;
+    case "ackcl":{S.settings.ack={...(S.settings.ack||{}),[b.dataset.v]:today()};await sset("ipc-settings",S.settings);render();toast("Marked as reviewed");return true;}
     case "delcase":if(confirm("Delete this culture record?")){S.events=S.events.filter(x=>x.id!==S.eid);await persistB();go("cases");}return true;
     case "bcsv":bcsv();return true;
   }
@@ -1512,7 +1792,7 @@ function aiForm(){
   const v=S.view,f=S.form;if(!f)return null;
   const d=v==="check"||v==="devnew"||v==="adh"?devOf(S.did):null,p=S.pid?ptOf(S.pid):null;
   switch(v){
-    case "hh":return{title:"Hand hygiene observation",loc:false,fields:[...deptFields(),E("category",STAFF,"Staff category"),T("categoryOther","Other staff category"),T("staffId","Staff ID number"),
+    case "hh":return{title:"Hand hygiene observation",loc:false,fields:[...deptFields(),E("isoUnit",ISO_UNITS,"Which isolation, only when department is Isolation rooms"),E("category",STAFF,"Staff category"),T("categoryOther","Other staff category"),T("staffId","Staff ID number"),
       M("moments",[1,2,3,4,5],"WHO moments: 1 before touching patient, 2 before aseptic procedure, 3 after body fluid exposure risk, 4 after touching patient, 5 after touching patient surroundings"),
       E("action",["rub","wash","missed"],"Action: rub = hand rub, wash = hand wash, missed"),E("gloves",GLOVES,"Gloves, only when missed"),...tail()]};
     case "ppe":return{title:"PPE compliance audit",loc:true,items:PPE_ITEMS,fields:[...deptFields(),...locFields(),M("precautions",PRECAUTIONS,"Precautions on the door"),E("category",STAFF,"Staff category"),T("categoryOther","Other staff category"),T("staffId","Staff ID number"),...tail()]};
@@ -1524,6 +1804,8 @@ function aiForm(){
       ...(f.type==="cl"?[E("clType",CL_TYPES,"Catheter type"),E("clSite",CL_SITES,"Site"),E("clDuration",["Temporary","Permanent"],"Duration")]:[]),
       ...(f.type==="mv"?[E("route",MV_ROUTES,"Airway")]:[]),...(f.type==="uc"?[T("size","Catheter size in Fr")]:[]),
       ...(m.ins.length?[E("insObserved",["Yes","No"],"Insertion observed or reliably documented")]:[])]};}
+    case "surg":return{title:`Operation and surgical bundle, bed ${p?.bed}`,items:SURG_ITEMS,fields:[T("procedure","Operative procedure"),Dd("date","Date of operation"),E("implant",["Yes","No"],"Implant left in place"),T("note","Note")]};
+    case "mdronew":return{title:"MDRO case",fields:[Dd("date","Specimen date"),Dd("admitDate","Admission date"),T("mrn","MRN"),E("unit",INPATIENT,"Unit"),T("organism","Organism"),E("mdroType",MDRO_TYPES,"MDRO type"),E("specimen",MDRO_SPEC,"Specimen"),E("isolation",["Yes","No"],"Isolation in place"),T("note","Note")]};
     case "culture":return{title:`Positive culture, bed ${p?.bed}`,fields:[E("specimen",SPECIMENS.map(s=>s[0]),"Specimen"),Dd("date","Date specimen collected"),T("organism","Organism(s)"),T("count","Colony count"),T("note","Clinical notes")]};
     case "adh":return{title:"Urinary catheter adherence monitoring",items:ADH_ITEMS,fields:[Dd("date","Date"),T("position","Assessor position"),T("note","Note")]};
     case "dischg":return{title:`Discharge or transfer, bed ${p?.bed}`,beds:true,fields:[E("outcome",OUTCOMES,"Outcome"),E("toUnit",WARDS(),"Receiving ward (transfer only)"),T("toUnitOther","Other ward name"),T("bed","Bed in the receiving unit, from the bed guide"),Dd("date","Date"),T("note","Note")]};
@@ -1558,7 +1840,7 @@ function aiRoster(){
   if(!canMod("bundles"))return "";
   return S.patients.filter(p=>p.status==="active"&&deptOk(p.unit)).map(p=>`${p.unit} bed ${p.bed}: hospital day ${hospDay(p)}, devices ${activeDevs(p.id).map(d=>DEV[d.type].name.toLowerCase()).join(", ")||"none"}`).join("\n")||"No active patients.";
 }
-const TARGETS=()=>[...Object.keys(MODULES).filter(canMod),"surv",...(canMod("bundles")?["round"]:[]),...(isTeam()?["dash","records","actions","bdash","cases","bench","users"]:[])];
+const TARGETS=()=>[...Object.keys(MODULES).filter(canMod),"surv",...(canMod("bundles")?["round"]:[]),...(isTeam()?["dash","records","actions","bdash","cases","bench","users","mdro","report","settings"]:[])];
 
 function aiSystem(spec){
   return `You are the assistant inside the Al-Sobh Hospital Infection Control Platform (Jeddah). The user is ${S.user.name}, role ${ROLES[S.user.role]}. Today is ${today()}.
@@ -1567,7 +1849,7 @@ The user speaks or types in Arabic, English or a mix. Speech-to-text may write E
 Reply with ONLY one JSON object, no other text. Types:
 {"type":"fill","set":{...},"text":"one short sentence"}  fill the form on the current screen
 {"type":"open","target":"<screen>","set":{...},"text":"..."}  go to a screen, optionally starting an audit with values
-{"type":"patient","unit":"...","bed":"...","task":"open|check|culture|adh|discharge","device":"uc|cl|mv","set":{...},"text":"..."}  act on a patient on the device round
+{"type":"patient","unit":"...","bed":"...","task":"open|check|culture|adh|discharge|surgery","device":"uc|cl|mv|pv","set":{...},"text":"..."}  act on a patient on the device round
 {"type":"answer","text":"..."}  answer a question or ask the user to clarify
 Write "text" in the language the user used.
 
@@ -1577,7 +1859,7 @@ Rules:
 - Checklist items: set "items" as {"key":"y"|"n"|"na"} and, for No answers with listed reasons, "subs" as {"key":["reason", ...]} using the listed reasons. If the user says everything else was fine, set every remaining item to "y".
 - Environmental cleaning: set "responsibility" ("Housekeeping" or "Healthcare provider") and "env" as {"Housekeeping":{"itemKey":"not_clean"|"na"},"Healthcare provider":{...}} using keys from the item dictionary. Items not mentioned stay clean.
 - Never claim anything was saved. The user reviews and presses Save.
-- Screens the user may open: ${TARGETS().join(", ")} (hh, ppe, waste, env are the four audits; surv is the audit menu; round is the device round).
+- Screens the user may open: ${TARGETS().join(", ")} (hh, ppe, waste, env are the four audits; surv is the audit menu; round is the device round; mdro is MDRO surveillance; report is the monthly report; settings is backup and settings).
 - Statistics: answer only from the statistics given below. If they do not contain the answer, say so.
 
 ${spec?`CURRENT SCREEN: ${spec.title}. Fields (key: meaning, options):
@@ -1650,6 +1932,7 @@ function aiNavigate(j){
     if(task==="open"){go("patient",{pid:p.id});return null;}
     if(task==="culture"){handleBundle("newcult",fake({}));return null;}
     if(task==="discharge"){handleBundle("dispt",fake({}));return null;}
+    if(task==="surgery"){handleBundle("newsurg",fake({}));return null;}
     const d=activeDevs(p.id).find(x=>!j.device||x.type===j.device);
     if(!d)return `No active ${j.device?DEV[j.device].name.toLowerCase():"device"} on bed ${p.bed}.`;
     if(task==="check"){handleBundle("newcheck",fake({id:d.id}));return null;}
@@ -1753,7 +2036,7 @@ function render(){
   const bar=S.user?`<header class="bar"><div class="wrap"><button class="brand" data-a="nav" data-v="home" aria-label="Home"><img src="${LOGO}" alt="Al-Sobh Hospital"><span>Infection Control Platform<small>Infection Prevention and Control</small></span></button>
     <div class="who">${esc(S.user.name)}<br><span class="role ${S.user.role}">${ROLES[S.user.role]}</span><br>
     <button data-a="nav" data-v="changepw">Change password</button> <button data-a="logout">Sign out</button></div></div></header>`:"";
-  const views={setup:vSetup,login:vLogin,home:vHome,surv:vSurv,records:vRecords,dash:vDash,actions:vActions,actionNew:vActionNew,users:vUsers,changepw:vChangePw,hh:vHH,ppe:vPPE,waste:vWaste,env:vEnv,round:vRound,ptform:vPtForm,patient:vPatient,devnew:vDevNew,device:vDevice,check:vCheck,culture:vCulture,cases:vCases,case:vCase,bdash:vBDash,uaccess:vUAccess,dischg:vDischarge,bench:vBench,adh:vAdh};
+  const views={setup:vSetup,login:vLogin,home:vHome,surv:vSurv,records:vRecords,dash:vDash,actions:vActions,actionNew:vActionNew,users:vUsers,changepw:vChangePw,hh:vHH,ppe:vPPE,waste:vWaste,env:vEnv,round:vRound,ptform:vPtForm,patient:vPatient,devnew:vDevNew,device:vDevice,check:vCheck,culture:vCulture,cases:vCases,case:vCase,bdash:vBDash,surg:vSurg,uaccess:vUAccess,settings:vSettings,log:vLog,report:vReport,mdro:vMdro,mdronew:vMdroNew,mdroimp:vMdroImp,dischg:vDischarge,bench:vBench,adh:vAdh};
   const modal=S.modal?`<div class="modal" data-a="closemodal"><div class="inner"><button class="btn ghost small" data-a="closemodal">Close</button>${S.modal}</div></div>`:"";
   const foot=`<footer class="foot"><span>© ${new Date().getFullYear()} <b>Dr. Asem Naji</b>. All rights reserved.</span><span>Infection Prevention and Control, Al-Sobh Hospital, Jeddah</span></footer>`;
   $("#app").innerHTML=bar+(views[S.view]||vLogin)()+foot+modal;
@@ -1777,7 +2060,7 @@ async function doLogin(){
   const username=val("lu").toLowerCase(),p=$("#lp").value,u=S.users.find(x=>x.username===username);
   if(!S.users.length)return fail("No accounts exist yet. Use Create account below.");
   if(!u||await hashPw(p,u.salt)!==u.hash)return fail("Username or password is incorrect.");
-  S.user=sessUser(u);await sset("ipc-session",u.username);go("home");
+  S.user=sessUser(u);await sset("ipc-session",u.username);go("home");autoActions();
 }
 async function addUser(){
   const name=val("nn"),username=val("nu").toLowerCase(),role=$("#nr").value,p=$("#np").value;
@@ -1808,6 +2091,7 @@ function validate(t,f){
   if(f.dept==="General OPD"&&!f.specialty)return "Select the clinic specialty.";
   if(f.specialty==="Other specialty"&&!f.specialtyOther.trim())return "Name the specialty.";
   if(t==="hh"){
+    if(f.dept==="Isolation rooms"&&!f.isoUnit)return "Select which isolation: ER, ICU, CCU or third floor.";
     if(!f.category)return "Select the staff category.";
     if(!f.moments.length)return "Select the moment observed.";
     if(!f.action)return "Select the hand hygiene action.";
@@ -1838,7 +2122,7 @@ async function save(){
   const rec={...JSON.parse(JSON.stringify(data)),id,ts:Date.now(),type:t,compliant,auditor:S.user.name,auditorUser:S.user.username,photoCount:ph.length};
   S.audits.push(rec);await sset("ipc-audits",S.audits);
   if(t==="hh"){S.session.n++;if(compliant)S.session.ok++;}
-  S.form=freshForm(t,t==="hh"?f:{dept:f.dept,deptOther:f.deptOther,specialty:f.specialty,specialtyOther:f.specialtyOther,locType:f.locType,cleanType:f.cleanType,method:f.method,resp:f.resp});
+  S.form=freshForm(t,t==="hh"?f:{validation:f.validation,dept:f.dept,deptOther:f.deptOther,specialty:f.specialty,specialtyOther:f.specialtyOther,locType:f.locType,cleanType:f.cleanType,method:f.method,resp:f.resp});
   S.error="";render();toast(isTeam()?(compliant?"Saved: compliant":"Saved: not compliant"):"Saved",isTeam()&&!compliant);
 }
 async function saveEnv(){
@@ -1885,6 +2169,8 @@ async function saveAction(){
   if(!issue)return fail("Describe the issue found.");
   if(!action)return fail("Describe the action to take.");
   if(!owner)return fail("Name an owner for the action.");
+  if(S.actionDraft?.id){const x=S.actions.find(y=>y.id===S.actionDraft.id);Object.assign(x,{module:$("#an-m").value,dept:$("#an-d").value,issue,action,owner,due:$("#an-due").value});
+    await sset("ipc-actions",S.actions);S.actionDraft=null;go("actions");toast("Action updated");return;}
   S.actions.push({id:uid(),created:today(),module:$("#an-m").value,dept:$("#an-d").value,issue,action,owner,due:$("#an-due").value,status:"Open",auditId:S.actionDraft?.auditId||null,by:S.user.name});
   await sset("ipc-actions",S.actions);S.actionDraft=null;S.actFilter="open";go("actions");toast("Action saved");
 }
@@ -1917,7 +2203,7 @@ document.addEventListener("click",async e=>{
     if(k==="resp"&&f.seen&&!f.seen.includes(v))f.seen.push(v);
     if(k==="action"&&v!=="missed")f.gloves="";
     if(k==="dept"||k==="specialty")f.specialtyOther=f.specialtyOther||"";
-    f[k]=f[k]===v&&k==="feedback"?"":v;S.error="";render();}
+    f[k]=f[k]===v&&(k==="feedback"||k==="validation")?"":v;S.error="";render();}
   else if(a==="prec"){const v=b.dataset.v;f.precautions=f.precautions.includes(v)?f.precautions.filter(x=>x!==v):[...f.precautions,v];S.error="";render();}
   else if(a==="envdrop"){const r=b.dataset.v;f.seen=f.seen.filter(x=>x!==r);envList(envProfile(f),r).forEach(i=>delete f.st[i.k]);if(f.resp===r)f.resp=f.seen[0]||"";render();}
   else if(a==="envx"){const k=b.dataset.k,v=f.st[k];if(!v)f.st[k]="n";else if(v==="n")f.st[k]="na";else delete f.st[k];render();}
@@ -1932,6 +2218,22 @@ document.addEventListener("click",async e=>{
   else if(a==="rmphoto"){f.photos.splice(+b.dataset.i,1);render();}
   else if(a==="save")save();
   else if(a==="adduser")addUser();
+  else if(a==="mdronew"&&isTeam())go("mdronew",{form:{date:today(),admitDate:"",mrn:"",unit:"",organism:"",mdroType:"",specimen:"",isolation:"",note:""}});
+  else if(a==="mdroedit"&&isTeam()){const m=S.mdro.find(x=>x.id===b.dataset.id);go("mdronew",{form:{...m,note:m.note||"",mrn:m.mrn||"",admitDate:m.admitDate||""}});}
+  else if(a==="mdrodel"&&isTeam()){if(confirm("Delete this MDRO case?")){S.mdro=S.mdro.filter(x=>x.id!==b.dataset.id);await sset("ipc-mdro",S.mdro);render();}}
+  else if(a==="savemdro"&&isTeam())saveMdro();
+  else if(a==="mdrocsv"&&isTeam())mdrocsv();
+  else if(a==="savecensus"&&isTeam()){document.querySelectorAll("[data-census]").forEach(i=>{const [u,m]=i.dataset.census.split("|");S.census[u]=S.census[u]||{};if(i.value==="")delete S.census[u][m];else S.census[u][m]=+i.value;});
+    await sset("ipc-census",S.census);render();toast("Patient days saved");}
+  else if(a==="doimport"&&isTeam()){const ok=impRows().filter(r=>!r.problem&&!r.dup).map(({problem,dup,...r})=>({...r,id:uid(),mdroType:r.mdroType||"Other MDRO",by:S.user.name,src:"import"}));
+    S.mdro.push(...ok);await sset("ipc-mdro",S.mdro);S.imp=null;go("mdro");toast(`Imported ${ok.length} cases`);}
+  else if(a==="print")window.print();
+  else if(a==="editaction"&&isTeam()){const x=S.actions.find(y=>y.id===b.dataset.id);go("actionNew",{actionDraft:{...x}});}
+  else if(a==="backup"&&isTeam())backup(false);
+  else if(a==="backupph"&&isTeam())backup(true);
+  else if(a==="logcsv"&&isTeam())logcsv();
+  else if(a==="savesettings"&&isTeam()){S.settings.idleMin=Math.max(0,+$("#idle").value||0);S.settings.sample=Object.fromEntries(Object.keys(MODULES).map(k=>[k,Math.max(0,+$("#sm-"+k).value||0)]));
+    await sset("ipc-settings",S.settings);render();toast("Settings saved");}
   else if(a==="editacc"&&isTeam())go("uaccess",{editU:b.dataset.u});
   else if(a==="saveacc"&&isTeam()){const u=S.users.find(x=>x.username===S.editU),p=readAccess();if(!p.mods.length)return fail("Tick at least one thing this user can enter.");
     u.perms=p;await sset("ipc-users",S.users);go("users");toast(`Access updated for ${u.name}`);}
@@ -1963,7 +2265,14 @@ document.addEventListener("click",async e=>{
 document.addEventListener("input",e=>{const k=e.target.dataset.bind;if(k)S.form[k]=e.target.value;});
 document.addEventListener("change",async e=>{
   const t=e.target;
-  if(t.dataset.bind==="dept"){Object.assign(S.form,{dept:t.value,room:"",areaOther:"",locType:"",specialty:"",specialtyOther:""});render();}
+  if(t.dataset.bind==="dept"){Object.assign(S.form,{dept:t.value,room:"",areaOther:"",locType:"",specialty:"",specialtyOther:"",isoUnit:""});render();}
+  if(t.dataset.crit!==undefined&&S.view==="case"){S.form.criteria=S.form.criteria||{};if(t.checked)S.form.criteria[t.dataset.crit]=true;else delete S.form.criteria[t.dataset.crit];render();return;}
+  if(t.dataset.mdroimp&&t.files[0]&&isTeam()){mdroFile(t.files[0]);t.value="";return;}
+  if(t.dataset.imp&&S.imp){S.imp.map[t.dataset.imp]=t.value;render();return;}
+  if(t.dataset.rep){S.repMonth=t.value;render();return;}
+  if(t.dataset.mdro){S.mdroF[t.dataset.mdro]=t.value;render();return;}
+  if(t.dataset.restore&&t.files[0]&&isTeam()){restore(t.files[0],t.dataset.restore);t.value="";return;}
+  if(t.id==="logq"){S.logQ=t.value;render();return;}
   if(t.dataset.scan&&t.files[0]){handleScan(t.dataset.scan,t.files[0]);t.value="";return;}
   if(t.hasAttribute("data-rerender")){if(t.dataset.bind==="room"&&S.form.st)S.form.st={};if((t.dataset.bind==="unit"||t.dataset.bind==="toUnit")&&S.form.bed!==undefined)S.form.bed="";S.form[t.dataset.bind]=t.value;render();}
   if(t.dataset.bd){S.bd[t.dataset.bd]=t.value;render();}
@@ -1982,6 +2291,283 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Escape"&&S.modal){S.modal=null;render();}
 });
 
+/* ================= MDRO surveillance ================= */
+const MDRO_TYPES=["MRSA","VRE","ESBL","CRE","CRAB","CRPA","Candida auris","C. difficile","Other MDRO"];
+const MDRO_HINT="CRE: carbapenem-resistant Enterobacterales. CRAB: carbapenem-resistant Acinetobacter baumannii. CRPA: carbapenem-resistant Pseudomonas aeruginosa.";
+const MDRO_SPEC=["Blood","Urine","Respiratory","Wound","Rectal or screening swab","Other"];
+const INPATIENT=["ICU","Pediatric ICU","CCU","General Ward (3rd Floor)","ER","Male Psychiatry","Female Psychiatry","Day Care Unit","Other"];
+/* NHSN LabID rule: a specimen collected on day 4 of admission or later is hospital-onset */
+const onsetOf=m=>!m.admitDate||!m.date?"Unknown":dayDiff(m.admitDate,m.date)+1>=4?"Hospital-onset":"Community-onset";
+function guessMdro(t){t=String(t||"").toLowerCase();
+  if(/mrsa|methicillin|oxacillin.?res/.test(t))return "MRSA";if(/vre|vancomycin.?res/.test(t))return "VRE";if(/auris/.test(t))return "Candida auris";if(/difficile|cdiff|c\.? ?diff/.test(t))return "C. difficile";
+  if(/crab|acinetobacter/.test(t)&&/carbapenem|crab|xdr|mdr/.test(t))return "CRAB";if(/crpa|pseudomonas/.test(t)&&/carbapenem|crpa|xdr|mdr/.test(t))return "CRPA";
+  if(/\bcre\b|cpe|kpc|ndm|oxa-?48|carbapenem/.test(t))return "CRE";if(/esbl|extended.?spectrum/.test(t))return "ESBL";return "";}
+function unitMatch(t){t=String(t||"").trim();if(!t)return "";const lo=t.toLowerCase();
+  const exact=INPATIENT.find(u=>u.toLowerCase()===lo);if(exact)return exact;
+  if(/picu|pediatric icu|paed/.test(lo))return "Pediatric ICU";if(/\bicu\b|intensive/.test(lo))return "ICU";if(/ccu|coronary|cardiac care/.test(lo))return "CCU";
+  if(/\ber\b|emergency|a ?& ?e/.test(lo))return "ER";if(/3rd|third|general ward|medical ward|surgical ward/.test(lo))return "General Ward (3rd Floor)";
+  if(/female psych/.test(lo))return "Female Psychiatry";if(/psych/.test(lo))return "Male Psychiatry";if(/day ?care/.test(lo))return "Day Care Unit";return t;}
+function toISO(v){if(v===null||v===undefined||v==="")return "";
+  if(typeof v==="number"&&v>20000&&v<80000)return new Date(Date.UTC(1899,11,30)+v*864e5).toISOString().slice(0,10);
+  if(v instanceof Date&&!isNaN(v))return v.toISOString().slice(0,10);
+  const t=String(v).trim();if(/^\d{4}-\d{2}-\d{2}/.test(t))return t.slice(0,10);const f=findDates(t);if(f.length)return f[0];
+  const m=t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2})$/);if(m)return `20${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;return "";}
+const MDRO_FIELDS=[["date","Specimen date",/collect|specimen.?date|sample.?date|^date|culture.?date/i,true],["mrn","MRN",/mrn|file|medical.?record|patient.?(no|id|number)/i],
+  ["unit","Unit",/unit|ward|dept|department|location/i,true],["organism","Organism",/organism|bacteri|pathogen|isolate|growth/i,true],
+  ["mdroType","MDRO type",/mdro|resist|phenotype|type/i],["specimen","Specimen",/specimen(?!.?date)|sample(?!.?date)|source|site/i],
+  ["admitDate","Admission date",/admi|^adm\b|adm\.? ?date|date of adm/i],["isolation","Isolation in place",/isolat|precaution/i],["note","Note",/note|comment|remark/i]];
+const mdroStats=(unit,month)=>{const l=S.mdro.filter(m=>m.date?.startsWith(month)&&(unit==="all"||m.unit===unit));
+  const ho=l.filter(m=>onsetOf(m)==="Hospital-onset").length,pd=unit==="all"?INPATIENT.reduce((t,u)=>t+(+S.census[u]?.[month]||0),0):(+S.census[unit]?.[month]||0);
+  const iso=l.filter(m=>m.isolation==="Yes"||m.isolation==="No");
+  return{n:l.length,ho,pd,rate:pd?ho/pd*1000:null,iso:pctN(iso.filter(m=>m.isolation==="Yes").length,iso.length),isoN:iso.length};};
+function vMdro(){
+  const f=S.mdroF||(S.mdroF={unit:"all",month:monthKey(today())}),months=[...Array(6)].map((_,i)=>{let m=monthKey(today());for(let j=0;j<i;j++)m=prevMonth(m);return m;}).reverse();
+  const list=S.mdro.filter(m=>(f.unit==="all"||m.unit===f.unit)&&m.date?.startsWith(f.month)).sort((a,b)=>b.date.localeCompare(a.date));
+  const st=mdroStats(f.unit,f.month);
+  return `<div class="wrap wide">${crumb("MDRO surveillance")}
+    <h1>MDRO surveillance</h1>
+    <p class="lead">Multidrug-resistant organism cases from the lab line list. Cases are split into hospital-onset (specimen on day 4 of admission or later) and community-onset. Enter monthly patient days to get rates.</p>
+    <div class="row" style="align-items:end">
+      <div><label class="f" for="mu">Unit</label><select id="mu" data-mdro="unit"><option value="all">All units</option>${INPATIENT.map(u=>`<option ${f.unit===u?"selected":""}>${u}</option>`).join("")}</select></div>
+      <div><label class="f" for="mm">Month</label><select id="mm" data-mdro="month">${months.slice().reverse().map(m=>`<option value="${m}" ${f.month===m?"selected":""}>${monthName(m)}</option>`).join("")}</select></div>
+      <div style="flex:0 0 auto"><button class="btn" data-a="mdronew">Add case</button></div>
+      <div style="flex:0 0 auto"><span class="btn ghost file-btn">Import Excel or CSV<input type="file" accept=".xlsx,.xls,.csv" data-mdroimp="1"></span></div></div>
+    <div class="stats" style="margin-top:14px">
+      <div class="stat" style="--c:#7A3E9D"><span>Cases</span><b>${st.n}</b><small>${st.ho} hospital-onset</small></div>
+      <div class="stat" style="--c:#7A3E9D"><span>Hospital-onset rate</span><b>${st.rate===null?"–":st.rate.toFixed(2)}</b><small>per 1,000 patient days${st.pd?`, ${st.pd} days`:", patient days not entered"}</small></div>
+      <div class="stat" style="--c:#7A3E9D"><span>Isolation in place</span><b>${st.iso===null?"–":st.iso+"%"}</b><small>${st.isoN} cases with an answer</small></div></div>
+    <h2>Last six months</h2>
+    <div class="scroll"><table><thead><tr><th>Month</th>${MDRO_TYPES.map(t=>`<th>${t}</th>`).join("")}<th>Hospital-onset</th><th>Rate per 1,000</th></tr></thead><tbody>
+      ${months.map(m=>{const l=S.mdro.filter(x=>x.date?.startsWith(m)&&(f.unit==="all"||x.unit===f.unit)),s2=mdroStats(f.unit,m);
+        return `<tr><th scope="row">${monthName(m)}</th>${MDRO_TYPES.map(t=>`<td class="c">${l.filter(x=>x.mdroType===t).length||""}</td>`).join("")}<td class="c">${s2.ho}</td><td class="c"><b>${s2.rate===null?"–":s2.rate.toFixed(2)}</b></td></tr>`;}).join("")}</tbody></table></div>
+    <h2>Cases in ${monthName(f.month)}</h2>
+    ${list.length?`<div class="scroll"><table><thead><tr><th>Date</th><th>MRN</th><th>Unit</th><th>Organism</th><th>Type</th><th>Specimen</th><th>Onset</th><th>Isolation</th><th></th></tr></thead><tbody>
+      ${list.map(m=>`<tr><td style="white-space:nowrap">${fmt(m.date)}</td><td>${esc(m.mrn||"–")}</td><td>${esc(m.unit)}</td><td>${esc(m.organism)}</td><td>${esc(m.mdroType||"–")}</td><td>${esc(m.specimen||"–")}</td>
+        <td><span class="tag ${onsetOf(m)==="Hospital-onset"?"no":onsetOf(m)==="Community-onset"?"ok":"mid"}">${onsetOf(m)}</span></td><td class="c">${esc(m.isolation||"–")}</td>
+        <td><button class="link-btn" data-a="mdroedit" data-id="${m.id}">Edit</button> <button class="link-btn" style="color:var(--stop)" data-a="mdrodel" data-id="${m.id}">Delete</button></td></tr>`).join("")}</tbody></table></div>`
+      :`<div class="card">No cases this month. Add one, or import the lab line list.</div>`}
+    <h2>Patient days per month</h2>
+    <div class="card"><p class="hint" style="margin-top:0">From the hospital census. Needed for the rate per 1,000 patient days.</p>
+      <div class="scroll"><table class="bench"><thead><tr><th>Unit</th>${months.map(m=>`<th>${monthName(m).replace(/ \d{4}/,"")}</th>`).join("")}</tr></thead><tbody>
+      ${INPATIENT.filter(u=>u!=="Other").map(u=>`<tr><th scope="row">${u}</th>${months.map(m=>`<td><input type="number" min="0" data-census="${u}|${m}" value="${S.census[u]?.[m]??""}" aria-label="${u} ${m}"></td>`).join("")}</tr>`).join("")}</tbody></table></div>
+      <div style="margin-top:10px"><button class="btn ghost" data-a="savecensus">Save patient days</button></div></div>
+    <div class="row" style="margin-top:16px"><div style="flex:0 0 auto"><button class="btn ghost" data-a="mdrocsv">Export all cases to CSV</button></div></div>
+  </div>`;
+}
+function vMdroNew(){
+  const f=S.form;
+  return `<div class="wrap">${crumb(f.id?"Edit MDRO case":"Add MDRO case",`<span>/</span><button data-a="nav" data-v="mdro">MDRO surveillance</button>`)}
+    <h1>${f.id?"Edit MDRO case":"Add MDRO case"}</h1>
+    <div class="row"><div><label class="f" for="md1">Specimen date</label><input type="date" id="md1" data-bind="date" value="${f.date}" max="${today()}"></div>
+      <div><label class="f" for="md2">Admission date <small>(for onset)</small></label><input type="date" id="md2" data-bind="admitDate" value="${f.admitDate}" max="${today()}"></div></div>
+    <div class="row"><div><label class="f" for="md3">MRN</label><input type="text" id="md3" data-bind="mrn" value="${esc(f.mrn)}" inputmode="numeric"></div>
+      <div><label class="f" for="md4">Unit</label><select id="md4" data-bind="unit"><option value="">Select unit</option>${INPATIENT.map(u=>`<option ${f.unit===u?"selected":""}>${u}</option>`).join("")}</select></div></div>
+    <label class="f" for="md5">Organism</label><input type="text" id="md5" data-bind="organism" value="${esc(f.organism)}" placeholder="e.g. Klebsiella pneumoniae">
+    ${chipsBlock("MDRO type","mdroType",MDRO_TYPES,f)}<p class="hint">${MDRO_HINT}</p>
+    ${chipsBlock("Specimen","specimen",MDRO_SPEC,f)}
+    ${chipsBlock("Contact or isolation precautions in place","isolation",["Yes","No"],f)}
+    ${noteBlock(f)}
+    ${errHtml()}<div style="margin-top:16px"><button class="btn block" data-a="savemdro">Save case</button></div></div>`;
+}
+async function saveMdro(){
+  const f=S.form;
+  if(!f.date)return fail("Enter the specimen date.");if(!f.unit)return fail("Select the unit.");if(!f.organism.trim())return fail("Enter the organism.");if(!f.mdroType)return fail("Select the MDRO type.");
+  if(f.admitDate&&f.admitDate>f.date)return fail("The admission date is after the specimen date.");
+  const rec={id:f.id||uid(),date:f.date,admitDate:f.admitDate,mrn:f.mrn.trim(),unit:f.unit,organism:f.organism.trim(),mdroType:f.mdroType,specimen:f.specimen,isolation:f.isolation,note:f.note,by:S.user.name,src:f.src||"manual"};
+  if(f.id)S.mdro=S.mdro.map(x=>x.id===f.id?rec:x);else S.mdro.push(rec);
+  await sset("ipc-mdro",S.mdro);S.mdroF={...(S.mdroF||{unit:"all"}),month:monthKey(rec.date)};go("mdro");toast(`Saved: ${onsetOf(rec).toLowerCase()}`);
+}
+function parseCSV(t){const rows=[];let r=[],c="",q=false;for(let i=0;i<t.length;i++){const ch=t[i];
+  if(q){if(ch==='"'&&t[i+1]==='"'){c+='"';i++;}else if(ch==='"')q=false;else c+=ch;}
+  else if(ch==='"')q=true;else if(ch===","||ch===";"||ch==="\t"){r.push(c);c="";}else if(ch==="\n"){r.push(c);rows.push(r);r=[];c="";}else if(ch!=="\r")c+=ch;}
+  if(c||r.length){r.push(c);rows.push(r);}return rows.filter(x=>x.some(v=>String(v).trim()));}
+async function mdroFile(file){
+  let rows;
+  try{
+    if(/\.csv$/i.test(file.name))rows=parseCSV(await file.text());
+    else{await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");const wb=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true});
+      rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:""});}
+  }catch(e){toast("Could not read that file. Save it as CSV and try again.",true);return;}
+  rows=rows.filter(r=>r.some(v=>String(v).trim()));if(rows.length<2){toast("The file has no data rows",true);return;}
+  const hi=rows.findIndex(r=>r.filter(v=>String(v).trim()).length>=3);const headers=rows[hi].map(h=>String(h).trim()),data=rows.slice(hi+1);
+  const map={};MDRO_FIELDS.forEach(([k,,re])=>{const i=headers.findIndex((h,j)=>re.test(h)&&!Object.values(map).includes(j));if(i>-1)map[k]=i;});
+  S.imp={name:file.name,headers,data,map};go("mdroimp");
+}
+function impRows(){const I=S.imp,g=k=>I.map[k]!==undefined&&I.map[k]!==""?(r=>r[+I.map[k]]):(()=>"");
+  return I.data.map(r=>{const org=String(g("organism")(r)||"").trim(),tp=String(g("mdroType")(r)||"");
+    const iso=String(g("isolation")(r)||"").toLowerCase();
+    const x={date:toISO(g("date")(r)),mrn:String(g("mrn")(r)||"").trim(),unit:unitMatch(g("unit")(r)),organism:org,mdroType:MDRO_TYPES.find(t=>t.toLowerCase()===tp.trim().toLowerCase())||guessMdro(tp+" "+org)||(tp.trim()?"Other MDRO":""),
+      specimen:MDRO_SPEC.find(s=>String(g("specimen")(r)).toLowerCase().includes(s.toLowerCase().split(" ")[0]))||(String(g("specimen")(r)).trim()?"Other":""),
+      admitDate:toISO(g("admitDate")(r)),isolation:/^(y|yes|نعم)/.test(iso)?"Yes":/^(n|no|لا)/.test(iso)?"No":"",note:String(g("note")(r)||"").trim()};
+    x.problem=!x.date?"No valid date":!x.organism?"No organism":!x.unit?"No unit":"";
+    x.dup=S.mdro.some(m=>m.date===x.date&&m.mrn===x.mrn&&orgKey(m.organism)===orgKey(x.organism));return x;});}
+function vMdroImp(){
+  const I=S.imp;if(!I)return vMdro();const rows=impRows(),ok=rows.filter(r=>!r.problem&&!r.dup);
+  return `<div class="wrap wide">${crumb("Import",`<span>/</span><button data-a="nav" data-v="mdro">MDRO surveillance</button>`)}
+    <h1>Import ${esc(I.name)}</h1>
+    <p class="lead">${I.data.length} rows found. Match each field to a column of your sheet; the platform guessed where it could. Rows already imported are skipped.</p>
+    <div class="card"><div class="row">${MDRO_FIELDS.map(([k,l,,req])=>`<div style="min-width:180px"><label class="f" for="im-${k}">${l}${req?"":" <small>(optional)</small>"}</label>
+      <select id="im-${k}" data-imp="${k}"><option value="">Not in the sheet</option>${I.headers.map((h,i)=>`<option value="${i}" ${String(I.map[k])===String(i)?"selected":""}>${esc(h||`Column ${i+1}`)}</option>`).join("")}</select></div>`).join("")}</div></div>
+    <h2>Preview</h2>
+    <div class="scroll"><table><thead><tr><th>Date</th><th>MRN</th><th>Unit</th><th>Organism</th><th>Type</th><th>Onset</th><th>Status</th></tr></thead><tbody>
+      ${rows.slice(0,12).map(r=>`<tr><td>${r.date?fmt(r.date):"–"}</td><td>${esc(r.mrn||"–")}</td><td>${esc(r.unit||"–")}</td><td>${esc(r.organism||"–")}</td><td>${esc(r.mdroType||"–")}</td><td>${onsetOf(r)}</td>
+        <td>${r.problem?`<span class="tag no">${r.problem}</span>`:r.dup?`<span class="tag mid">Already imported</span>`:`<span class="tag ok">Ready</span>`}</td></tr>`).join("")}</tbody></table></div>
+    ${rows.length>12?`<p class="hint">Showing 12 of ${rows.length} rows.</p>`:""}
+    <p><b>${ok.length}</b> ready, ${rows.filter(r=>r.dup).length} already imported, ${rows.filter(r=>r.problem).length} with a problem.${rows.some(r=>!r.mdroType&&!r.problem)?" Rows without an MDRO type are imported as Other MDRO.":""}</p>
+    <div class="row"><div style="flex:0 0 auto"><button class="btn" data-a="doimport" ${ok.length?"":"disabled"}>Import ${ok.length} ${ok.length===1?"case":"cases"}</button></div><div style="flex:0 0 auto"><button class="btn ghost" data-a="nav" data-v="mdro">Cancel</button></div></div></div>`;
+}
+function mdrocsv(){
+  const head=["Specimen date","Admission date","MRN","Unit","Organism","MDRO type","Specimen","Onset","Isolation in place","Note","Entered by"];
+  const rows=S.mdro.map(m=>[m.date,m.admitDate||"",m.mrn||"",m.unit,m.organism,m.mdroType,m.specimen||"",onsetOf(m),m.isolation||"",m.note||"",m.by||""]);
+  const t="\uFEFF"+[head,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([t],{type:"text/csv"}));a.download=`ipc-mdro-${today()}.csv`;a.click();
+}
+
+/* ================= Monthly report ================= */
+function devMetrics(pS,pE,unit){
+  const inU=u=>unit==="all"||u===unit,inP=x=>x>=pS&&x<pE,uAt=(pid,d,r)=>{const p=ptOf(pid);return p?unitAt(p,d,r):null;};
+  const ptDays=S.patients.reduce((t,p)=>t+segs(p).filter(g=>inU(g.unit)).reduce((x,g)=>x+overlap(g.s,g.e,pS,pE),0),0);
+  const devDays=d=>{const p=ptOf(d.patientId);if(!p)return 0;const end=d.removed||pE;return segs(p).filter(g=>inU(g.unit)).reduce((x,g)=>x+overlap(d.insertDate>g.s?d.insertDate:g.s,end<g.e?end:g.e,pS,pE),0);};
+  const rows=Object.entries(DEV).map(([k,m])=>{const ds=S.devices.filter(d=>d.type===k),dd=ds.reduce((x,d)=>x+devDays(d),0);
+    const ch=ds.flatMap(d=>d.checks.filter(c=>inP(c.date)&&inU(uAt(d.patientId,c.date))));
+    const ev=S.events.filter(e=>e.status==="Confirmed HAI"&&inP(e.date)&&inU(uAt(e.patientId,e.date,true))).filter(e=>{const a=assess(e);return a.type===k&&a.kind==="flag";});
+    return{k,m,dd,ch:ch.length,chOk:ch.filter(checkOk).length,hai:ev.length,rate:dd?ev.length/dd*1000:null,du:ptDays?dd/ptDays:null};});
+  const ops=S.surg.filter(x=>inP(x.date)&&inU(uAt(x.patientId,x.date))),ids=new Set(ops.map(x=>x.id));
+  const ssi=S.events.filter(e=>e.status==="Confirmed HAI").filter(e=>{const a=assess(e);return a.type==="ssi"&&a.kind==="flag"&&ids.has(a.procId);}).length;
+  return{ptDays,rows,ops:ops.length,opsOk:ops.filter(surgOk).length,ssi};
+}
+function vReport(){
+  const m=S.repMonth||(S.repMonth=prevMonth(monthKey(today()))),pm=prevMonth(m),pS=m+"-01",pE=addDays(addDays(pS,32).slice(0,7)+"-01",0);
+  const months=[...Array(12)].map((_,i)=>{let x=monthKey(today());for(let j=0;j<i;j++)x=prevMonth(x);return x;});
+  const aud=S.audits.filter(a=>monthKey(a.date)===m),audP=S.audits.filter(a=>monthKey(a.date)===pm);
+  const dm=devMetrics(pS,pE,"all"),dmP=devMetrics(pm+"-01",pS,"all");
+  const mo=mdroStats("all",m),moP=mdroStats("all",pm);
+  const val=(k,which)=>{const l=(which?audP:aud).filter(a=>a.type===k);return{v:pctN(l.filter(a=>a.compliant).length,l.length),n:l.length};};
+  const R=(x,k)=>{const r=x.rows.find(y=>y.k===k);return r;};
+  const ind=[...Object.keys(MODULES).map(k=>({k,l:BM_METRICS.find(x=>x.k===k).l,u:"%",a:val(k).v,an:val(k).n,b:val(k,1).v})),
+    ...Object.keys(DEV).map(k=>({k:"b_"+k,l:`${DEV[k].name} daily bundle`,u:"%",a:pctN(R(dm,k).chOk,R(dm,k).ch),an:R(dm,k).ch,b:pctN(R(dmP,k).chOk,R(dmP,k).ch)})),
+    ...Object.keys(DEV).map(k=>({k:"r_"+k,l:`${DEV[k].hai} rate per 1,000 device days`,u:"r",a:R(dm,k).rate,an:R(dm,k).dd,unit:"device days",b:R(dmP,k).rate,hai:R(dm,k).hai})),
+    {k:"b_ssi",l:"Surgical bundle",u:"%",a:pctN(dm.opsOk,dm.ops),an:dm.ops,b:pctN(dmP.opsOk,dmP.ops)},
+    {k:"r_ssi",l:"SSI rate per 100 operations",u:"r",a:dm.ops?dm.ssi/dm.ops*100:null,an:dm.ops,unit:"operations",b:dmP.ops?dmP.ssi/dmP.ops*100:null,hai:dm.ssi},
+    {k:"mdro_ho",l:"Hospital-onset MDRO per 1,000 patient days",u:"r",a:mo.rate,an:mo.pd,unit:"patient days",b:moP.rate,hai:mo.ho},
+    {k:"iso",l:"Isolation in place for MDRO cases",u:"%",a:mo.iso,an:mo.isoN,b:moP.iso}].filter(x=>x.a!==null||x.b!==null);
+  const meta=k=>BM_METRICS.find(x=>x.k===k);
+  const show=(x,v)=>v===null||v===undefined?"–":x.u==="%"?Math.round(v)+"%":(+v).toFixed(2);
+  const cls=(x,v,t)=>!isNum(v)||!isNum(t)?"none":(meta(x.k)?.hi??x.u==="%")?(v>=+t?"good":"bad"):(v<=+t?"good":"bad");
+  const confirmed=S.events.filter(e=>e.status==="Confirmed HAI"&&monthKey(e.date)===m).map(e=>({e,a:assess(e),p:ptOf(e.patientId)})).filter(x=>x.a.kind==="flag");
+  const cl=clusters(pS,addDays(pE,-1));
+  const opened=S.actions.filter(x=>monthKey(x.created||"")===m),closed=S.actions.filter(x=>x.closed&&monthKey(x.closed)===m),over=S.actions.filter(isOverdue),rea=S.actions.filter(reauditDue);
+  const units=BUNDLE_UNITS.map(u=>({u,d:devMetrics(pS,pE,u)})).filter(x=>x.d.ptDays||x.d.rows.some(r=>r.dd));
+  return `<div class="wrap wide rep">
+    <div class="noprint">${crumb("Monthly report")}
+      <div class="row" style="align-items:end;margin-bottom:14px"><div><label class="f" for="repm">Month</label><select id="repm" data-rep="1">${months.map(x=>`<option value="${x}" ${x===m?"selected":""}>${monthName(x)}</option>`).join("")}</select></div>
+        <div style="flex:0 0 auto"><button class="btn" data-a="print">Print or save as PDF</button></div></div></div>
+    <header class="rep-head"><img src="${LOGO}" alt="Al-Sobh Hospital"><div><h1>Infection Prevention and Control Monthly Report</h1><p>${monthName(m)}. Prepared ${fmt(today())} by ${esc(S.user.name)}.</p></div></header>
+    <section><h2>1. Key indicators</h2>
+      <div class="scroll"><table><thead><tr><th>Indicator</th><th>${monthName(m)}</th><th>${monthName(pm)}</th><th>Target</th>${S.bench.map(b=>`<th>${esc(b.name)}</th>`).join("")}</tr></thead><tbody>
+      ${ind.map(x=>`<tr><th scope="row">${x.l}</th><td class="c ${cls(x,x.a,target(x.k))}"><b>${show(x,x.a)}</b><small>${x.hai!==undefined?`${x.hai} ${x.hai===1?"case":"cases"}, ${x.an??0} ${x.unit}`:`n=${x.an??0}`}</small></td><td class="c">${show(x,x.b)}</td>
+        <td class="c">${isNum(target(x.k))?show(x,target(x.k)):"–"}</td>${S.bench.map(b=>`<td class="c ${cls(x,x.a,b.values[x.k])}">${isNum(b.values[x.k])?show(x,b.values[x.k]):"–"}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+      <p class="hint">Green meets the target or benchmark, red does not. Bundle compliance is all-or-none. Rates count confirmed cases only. Indicators with no data in either month are left out.</p></section>
+    <section><h2>2. Audit compliance by department</h2>${locTable(aud,true)}</section>
+    <section><h2>3. Sample size</h2>${sampleTable(m)}</section>
+    <section><h2>4. Hand hygiene by moment and profession</h2>${hhMatrix(aud)}</section>
+    <section><h2>5. Device use and infections by unit</h2>
+      ${units.length?`<div class="scroll"><table><thead><tr><th>Unit</th><th>Patient days</th>${Object.values(DEV).map(d=>`<th>${d.name}<br><small style="font-weight:400">days, use, ${d.hai}</small></th>`).join("")}</tr></thead><tbody>
+      ${units.map(x=>`<tr><th scope="row">${x.u}</th><td class="c">${x.d.ptDays}</td>${x.d.rows.map(r=>`<td class="c">${r.dd}<small>${r.du===null?"–":r.du.toFixed(2)} use, ${r.hai} ${r.m.hai}</small></td>`).join("")}</tr>`).join("")}</tbody></table></div>`:`<div class="card">No device round data this month.</div>`}</section>
+    <section><h2>6. Confirmed device-associated infections and SSI</h2>
+      ${confirmed.length?`<div class="scroll"><table><thead><tr><th>Date of event</th><th>Unit and bed</th><th>MRN</th><th>Infection</th><th>Organism</th></tr></thead><tbody>
+      ${confirmed.map(({e,a,p})=>`<tr><td>${fmt(e.date)}</td><td>${esc(unitAt(p,e.date,true))}, bed ${esc(p.bed)}</td><td>${esc(p.mrn)}</td><td>${HAI_NAME[a.type]||"HAI"}${e.criteria&&critVerdict(a.type,e.criteria)?.ok?`<br><small>${critVerdict(a.type,e.criteria).text}</small>`:""}</td><td>${esc(e.organism)}</td></tr>`).join("")}</tbody></table></div>`:`<div class="card">No confirmed device-associated infections or SSI this month.</div>`}</section>
+    <section><h2>7. MDRO</h2>
+      <p>${mo.n} cases, ${mo.ho} hospital-onset. Hospital-onset rate ${mo.rate===null?"not available (patient days not entered)":mo.rate.toFixed(2)+" per 1,000 patient days"}. Isolation in place ${mo.iso===null?"not recorded":mo.iso+"%"}.</p>
+      ${mo.n?`<div class="scroll"><table><thead><tr>${MDRO_TYPES.map(t=>`<th>${t}</th>`).join("")}</tr></thead><tbody><tr>${MDRO_TYPES.map(t=>`<td class="c">${S.mdro.filter(x=>x.date?.startsWith(m)&&x.mdroType===t).length}</td>`).join("")}</tr></tbody></table></div>`:""}</section>
+    <section><h2>8. Clusters</h2>${cl.length?`<ul>${cl.map(c=>`<li>${esc(c.orgTxt)} in ${esc(c.unit)}: ${c.n} patients, ${fmt(c.first)} to ${fmt(c.last)}.</li>`).join("")}</ul>`:`<p>No clusters detected (same organism, same unit, two or more patients within 14 days).</p>`}</section>
+    <section><h2>9. Validation of link nurse audits</h2>${validationTable(aud)}</section>
+    <section><h2>10. Corrective actions</h2>
+      <p>${opened.length} opened and ${closed.length} closed this month. ${over.length} overdue and ${rea.length} awaiting re-audit now.</p>
+      ${[...over,...rea].length?`<div class="scroll"><table><thead><tr><th>Department</th><th>Issue</th><th>Owner</th><th>Status</th></tr></thead><tbody>
+      ${[...new Set([...over,...rea])].map(x=>`<tr><td>${esc(x.dept)}</td><td>${esc(x.issue)}</td><td>${esc(x.owner||"–")}</td><td>${isOverdue(x)?`Overdue since ${fmt(x.due)}`:"Re-audit due"}</td></tr>`).join("")}</tbody></table></div>`:""}</section>
+    <section class="sign"><div><span>Prepared by</span></div><div><span>Infection control committee chair</span></div><div><span>Date</span></div></section>
+    <p class="hint" style="text-align:center;margin-top:18px">© ${new Date().getFullYear()} Dr. Asem Naji. Al-Sobh Hospital Infection Control Platform.</p>
+  </div>`;
+}
+
+/* ================= Settings, backup, auto sign-out ================= */
+const SAMPLE_DEFAULT={hh:200,ppe:30,waste:4,env:20};
+const sampleMin=k=>S.settings.sample?.[k]??SAMPLE_DEFAULT[k];
+const idleMin=()=>S.settings.idleMin??15;
+let lastAct=Date.now();
+["click","keydown","touchstart","input"].forEach(ev=>document.addEventListener(ev,()=>{lastAct=Date.now();},{passive:true,capture:true}));
+setInterval(async()=>{if(S.user&&idleMin()>0&&Date.now()-lastAct>idleMin()*60000){S.user=null;AI.open=false;await sset("ipc-session",null);go("login");toast(`Signed out after ${idleMin()} minutes without activity`);}},30000);
+async function listKeys(){
+  if(window.storage){try{const r=await window.storage.list("ipc-",false);return r?.keys||[];}catch(e){return Object.keys(mem);}}
+  if(LS){const o=[];for(let i=0;i<LS.length;i++){const k=LS.key(i);if(k.startsWith("ipc-"))o.push(k);}return o;}
+  return Object.keys(mem).filter(k=>k.startsWith("ipc-"));
+}
+async function backup(withPhotos){
+  const keys=(await listKeys()).filter(k=>k!=="ipc-session"&&(withPhotos||!k.startsWith("ipc-photo:")));
+  const data={};for(const k of keys)data[k]=await sget(k);
+  const blob=new Blob([JSON.stringify({app:"alsobh-ipc",version:1,made:new Date().toISOString(),by:S.user.name,data})],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`ipc-backup-${today()}${withPhotos?"-with-photos":""}.json`;a.click();
+  S.settings.lastBackup=today();await sset("ipc-settings",S.settings);render();
+}
+async function restore(file,mode){
+  let j;try{j=JSON.parse(await file.text());}catch(e){toast("That file is not a platform backup",true);return;}
+  if(j.app!=="alsobh-ipc"||!j.data){toast("That file is not a platform backup",true);return;}
+  const D=j.data,arr=["ipc-audits","ipc-actions","ipc-patients","ipc-devices","ipc-events","ipc-mdro","ipc-surg","ipc-log"];
+  if(mode==="replace"){if(!confirm("Replace everything on this device with the backup? Current data on this device will be lost."))return;
+    for(const k of await listKeys())if(k!=="ipc-session"&&!(k in D))await sdel(k);
+    for(const [k,v] of Object.entries(D))await sset(k,v);}
+  else{let added=0;
+    for(const k of arr){const cur=(await sget(k))||[],ids=new Set(cur.map(x=>x.id||x.ts+"|"+x.label)),inc=(D[k]||[]).filter(x=>!ids.has(x.id||x.ts+"|"+x.label));added+=k==="ipc-log"?0:inc.length;
+      const m=k==="ipc-log"?[...cur,...inc].sort((a,b)=>a.ts-b.ts):[...cur,...inc];await sset(k,m);}
+    const cu=(await sget("ipc-users"))||[],nu=(D["ipc-users"]||[]).filter(u=>!cu.some(x=>x.username===u.username));await sset("ipc-users",[...cu,...nu]);
+    for(const [k,v] of Object.entries(D))if(k.startsWith("ipc-photo:")&&(await sget(k))===null)await sset(k,v);
+    for(const k of ["ipc-targets","ipc-bench","ipc-envcustom","ipc-census"])if(D[k]&&!(await sget(k)))await sset(k,D[k]);
+    toast(`Merged ${added} new records${nu.length?` and ${nu.length} accounts`:""}`);}
+  setTimeout(()=>location.reload(),900);
+}
+function vSettings(){
+  const st=S.settings;
+  return `<div class="wrap">${crumb("Data and settings")}
+    <h1>Data and settings</h1>
+    <p class="lead">Until the platform has a central server, each device keeps its own data. Use backups to keep data safe and to bring entries from several devices together.</p>
+    <h2>Backup</h2>
+    <div class="card"><p style="margin-top:0">Last backup on this device: <b>${st.lastBackup?fmt(st.lastBackup):"never"}</b>${!st.lastBackup||st.lastBackup<addDays(today(),-7)?` <span class="tag no">Due</span>`:""}</p>
+      <div class="row"><div style="flex:0 0 auto"><button class="btn" data-a="backup">Download backup</button></div><div style="flex:0 0 auto"><button class="btn ghost" data-a="backupph">Backup with photos</button></div></div>
+      <p class="hint">The file contains patient details. Keep it on a hospital computer or drive, not on personal storage.</p></div>
+    <h2>Bring in data from another device</h2>
+    <div class="card"><p style="margin-top:0">On the other device, download a backup and send the file here. <b>Merge</b> adds the entries this device does not have yet. <b>Replace</b> wipes this device and loads the backup.</p>
+      <div class="row"><span class="btn ghost file-btn" style="flex:0 0 auto">Merge a backup<input type="file" accept=".json,application/json" data-restore="merge"></span>
+        <span class="btn danger file-btn" style="flex:0 0 auto">Replace with a backup<input type="file" accept=".json,application/json" data-restore="replace"></span></div></div>
+    <h2>Sign-out on shared devices</h2>
+    <div class="card"><label class="f" style="margin-top:0" for="idle">Sign out after this many minutes without activity <small>(0 turns it off)</small></label>
+      <input type="number" id="idle" min="0" max="240" value="${idleMin()}" style="max-width:140px"></div>
+    <h2>Minimum sample per department per month</h2>
+    <div class="card"><p style="margin-top:0" class="hint">The dashboard and monthly report flag departments below these numbers. WHO suggests about 200 hand hygiene opportunities per unit per period for a reliable rate.</p>
+      <div class="row">${Object.entries(MODULES).map(([k,m])=>`<div><label class="f" for="sm-${k}">${m.name}</label><input type="number" min="0" id="sm-${k}" value="${sampleMin(k)}"></div>`).join("")}</div></div>
+    <div style="margin-top:16px"><button class="btn" data-a="savesettings">Save settings</button></div>
+    <h2>Activity log</h2>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>${S.log.length} recorded changes: who added, changed or deleted what, and when.</span><button class="btn ghost" data-a="nav" data-v="log">Open activity log</button></div>
+  </div>`;
+}
+function vLog(){
+  const q=(S.logQ||"").toLowerCase(),list=S.log.slice().reverse().filter(x=>!q||`${x.by} ${x.what} ${x.act} ${x.label} ${x.note||""}`.toLowerCase().includes(q));
+  return `<div class="wrap wide">${crumb("Activity log",`<span>/</span><button data-a="nav" data-v="settings">Data and settings</button>`)}
+    <h1>Activity log</h1>
+    <p class="lead">Every addition, change and deletion, with the person and time. Entries cannot be edited.</p>
+    <div class="row" style="align-items:end"><div><label class="f" for="logq">Search</label><input type="text" id="logq" value="${esc(S.logQ||"")}" placeholder="Name, unit, bed, audit…"></div>
+      <div style="flex:0 0 auto"><button class="btn ghost" data-a="logcsv">Export to CSV</button></div></div>
+    <div class="scroll" style="margin-top:12px"><table><thead><tr><th>When</th><th>Who</th><th>What</th><th>Action</th><th>Details</th></tr></thead><tbody>
+    ${list.slice(0,400).map(x=>`<tr><td style="white-space:nowrap">${new Date(x.ts).toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}</td><td>${esc(x.by)}</td><td>${esc(x.what)}</td>
+      <td><span class="tag ${x.act==="Deleted"?"no":x.act==="Added"?"ok":"mid"}">${x.act}</span></td><td>${esc(x.label)}${x.note&&x.note!=="edited"?`<br><small>${esc(x.note)}</small>`:""}</td></tr>`).join("")||`<tr><td colspan="5">No changes recorded yet.</td></tr>`}
+    </tbody></table></div>${list.length>400?`<p class="hint">Showing the latest 400 of ${list.length}. Export to see all.</p>`:""}</div>`;
+}
+function logcsv(){
+  const rows=[["When","Who","What","Action","Details","Note"],...S.log.map(x=>[new Date(x.ts).toISOString(),x.by,x.what,x.act,x.label,x.note||""])];
+  const t="\uFEFF"+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([t],{type:"text/csv"}));a.download=`ipc-activity-log-${today()}.csv`;a.click();
+}
+
 /* ================= Boot ================= */
 (async()=>{
   S.users=(await sget("ipc-users"))||[];
@@ -1993,8 +2579,15 @@ document.addEventListener("keydown",e=>{
   S.patients=(await sget("ipc-patients"))||[];
   S.devices=(await sget("ipc-devices"))||[];
   S.events=(await sget("ipc-events"))||[];
+  S.mdro=(await sget("ipc-mdro"))||[];
+  S.census=(await sget("ipc-census"))||{};
+  S.surg=(await sget("ipc-surg"))||[];
+  S.log=(await sget("ipc-log"))||[];
+  S.settings=(await sget("ipc-settings"))||{};
+  Object.keys(TRACK).forEach(k=>{SNAP[k]=snapOf(mem[k]??({"ipc-audits":S.audits,"ipc-actions":S.actions,"ipc-patients":S.patients,"ipc-devices":S.devices,"ipc-events":S.events,"ipc-users":S.users,"ipc-mdro":S.mdro,"ipc-surg":S.surg})[k]);});
+  if("serviceWorker" in navigator&&location.protocol==="https:"&&!window.storage){navigator.serviceWorker.register("sw.js").catch(()=>{});}
   const sess=await sget("ipc-session"),u=S.users.find(x=>x.username===sess);
-  if(u){S.user=sessUser(u);S.view="home";}
+  if(u){S.user=sessUser(u);S.view="home";setTimeout(autoActions,500);}
   else S.view="login";
   render();
 })();
