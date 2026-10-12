@@ -210,6 +210,19 @@ td.c.tgt{font-weight:700}
 .ai-mic{background:var(--mist);color:var(--ink)}.ai-mic.on{background:var(--stop);color:#fff}
 .ai-send{background:var(--primary);color:#fff}.ai-send:disabled{opacity:.5}
 .foot{padding-right:96px}
+.hgroup{margin-top:22px}.hgroup:first-of-type{margin-top:10px}
+.hgroup h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink);margin:0 0 10px;font-weight:700;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.hgroup h2 small{text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted);font-size:.85rem}
+.hnum{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;font-size:.8rem;letter-spacing:0;align-self:center}
+.hnum:empty{display:none}
+.hgroup .tiles.grid{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.hgroup .tile{min-height:0}
+.subnav{margin-top:6px}
+.isogrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.card.iso{border-left:5px solid #7A3E9D}.iso-h{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.spc{margin:0}.spc figcaption{margin-bottom:6px}.spc svg{width:100%;height:auto}
+table.abg thead th{white-space:nowrap;font-size:.8rem}
+td.mid{background:#FFF1CC}
 .cmt{margin-top:8px;font-size:.9rem;padding:9px 11px}
 .rep-head{display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:center;gap:16px;border-bottom:3px solid var(--sun);padding-bottom:12px;margin-bottom:6px}
 .rep-head img{height:58px}.rep-head h1{margin:0;font-size:1.45rem}.rep-head p{margin:4px 0 0;color:var(--muted)}
@@ -266,7 +279,7 @@ const LOC={
   "Isolation rooms":{rooms:["ER isolation 1","ER isolation 2","ER isolation 3","ICU isolation 9","ICU isolation 10","ICU isolation 21","CCU isolation","Room 315","Room 317","Room 354","Room 355"]},
   "Other":{rooms:"text",areas:[]}};
 const STAFF=["Nurse","Doctor","Housekeeping","Other"];
-const ROLES={team:"Infection Control Team",link:"Infection Control Link"};
+const ROLES={team:"Infection Control Team",link:"Infection Control Link",unit:"Unit head (read only)"};
 const MOMENTS=[
   {n:1,short:"Before touching a patient",full:"Before touching a patient"},
   {n:2,short:"Before aseptic procedure",full:"Before clean / aseptic procedure"},
@@ -389,15 +402,15 @@ const CFG=window.IPC_CONFIG||{};
 const CLOUD=!!(CFG.firebase&&CFG.firebase.apiKey)&&!window.storage;
 const FB_VER="10.12.2";
 let fbApp=null,db=null,auth=null,unsubs=[],loaded=new Set(),rTimer=null;
-const COL={"ipc-audits":"audits","ipc-actions":"actions","ipc-patients":"patients","ipc-devices":"devices","ipc-events":"events","ipc-mdro":"mdro","ipc-surg":"surg","ipc-users":"users"};
-const SKEY={"ipc-audits":"audits","ipc-actions":"actions","ipc-patients":"patients","ipc-devices":"devices","ipc-events":"events","ipc-mdro":"mdro","ipc-surg":"surg","ipc-users":"users",
+const COL={"ipc-risk":"risk","ipc-outbreaks":"outbreaks","ipc-iso":"iso","ipc-expo":"expo","ipc-fit":"fit","ipc-train":"train","ipc-sched":"sched","ipc-ast":"ast","ipc-audits":"audits","ipc-actions":"actions","ipc-patients":"patients","ipc-devices":"devices","ipc-events":"events","ipc-mdro":"mdro","ipc-surg":"surg","ipc-users":"users"};
+const SKEY={"ipc-risk":"risk","ipc-outbreaks":"outbreaks","ipc-iso":"iso","ipc-expo":"expo","ipc-fit":"fit","ipc-train":"train","ipc-sched":"sched","ipc-ast":"ast","ipc-cbahi":"cbahi","ipc-audits":"audits","ipc-actions":"actions","ipc-patients":"patients","ipc-devices":"devices","ipc-events":"events","ipc-mdro":"mdro","ipc-surg":"surg","ipc-users":"users",
   "ipc-targets":"targets","ipc-bench":"bench","ipc-envcustom":"envCustom","ipc-census":"census","ipc-settings":"settings"};
-const CONF={"ipc-targets":"targets","ipc-bench":"bench","ipc-envcustom":"envCustom","ipc-census":"census","ipc-settings":"settings"};
+const CONF={"ipc-cbahi":"cbahi","ipc-targets":"targets","ipc-bench":"bench","ipc-envcustom":"envCustom","ipc-census":"census","ipc-settings":"settings"};
 const CSNAP={};
 const clean=x=>JSON.parse(JSON.stringify(x??null));
 const photoDoc=k=>{const m=k.match(/^ipc-photo:(.+):(\d+)$/);return m?`${m[1]}__${m[2]}`:k.replace(/^ipc-photo:/,"").replace(/[\/]/g,"_");};
 const profileToUser=p=>({username:p.uid,uid:p.uid,name:p.name,email:p.email,role:p.role,perms:p.perms||null,active:p.active!==false});
-const userToProfile=u=>clean({uid:u.uid||u.username,name:u.name,email:u.email||"",role:u.role,perms:u.role==="link"?(u.perms||DEFAULT_PERMS):null,active:u.active!==false});
+const userToProfile=u=>clean({uid:u.uid||u.username,name:u.name,email:u.email||"",role:u.role,perms:u.role!=="team"?(u.perms||DEFAULT_PERMS):null,active:u.active!==false});
 function cloudErr(e){console.warn(e);if(e&&e.code==="permission-denied")toast("Not saved: you do not have permission for this",true);else if(e)toast("Could not reach the server. It will retry when the connection is back.",true);}
 async function cloudSet(k,v){
   try{
@@ -431,8 +444,13 @@ function listen(){
   stopListening();
   const on=(key,ref)=>unsubs.push(ref.onSnapshot(s=>applyServer(key,s.docs.map(d=>d.data())),e=>{console.warn(key,e.code);loaded.add(key);}));
   const team=isTeam();
-  if(team){on("ipc-audits",db.collection("audits"));on("ipc-actions",db.collection("actions"));on("ipc-mdro",db.collection("mdro"));on("ipc-users",db.collection("users"));}
-  else unsubs.push(db.collection("users").doc(auth.currentUser.uid).onSnapshot(d=>{if(d.exists){const p=d.data();if(p.active===false){cloudLogout("Your account has been removed.");return;}applyServer("ipc-users",[p]);S.user=sessUser(profileToUser(p));scheduleRender();}}));
+  const uidv=auth.currentUser.uid,role=S.user.role,depts=S.user.perms?.depts||[];
+  if(team){on("ipc-audits",db.collection("audits"));on("ipc-actions",db.collection("actions"));on("ipc-mdro",db.collection("mdro"));on("ipc-users",db.collection("users"));
+    ["ipc-risk","ipc-outbreaks","ipc-iso","ipc-expo","ipc-fit","ipc-train","ipc-sched","ipc-ast"].forEach(k=>on(k,db.collection(COL[k])));}
+  else if(role==="unit"&&depts.length){on("ipc-audits",db.collection("audits").where("dept","in",depts.slice(0,30)));on("ipc-actions",db.collection("actions").where("dept","in",depts.slice(0,30)));
+    on("ipc-patients",db.collection("patients").where("unit","in",depts.slice(0,30)));on("ipc-devices",db.collection("devices"));on("ipc-events",db.collection("events"));on("ipc-surg",db.collection("surg"));}
+  else{on("ipc-audits",db.collection("audits").where("auditorUser","==",uidv));on("ipc-sched",db.collection("sched").where("assignee","==",uidv));}
+  if(!team)unsubs.push(db.collection("users").doc(auth.currentUser.uid).onSnapshot(d=>{if(d.exists){const p=d.data();if(p.active===false){cloudLogout("Your account has been removed.");return;}applyServer("ipc-users",[p]);S.user=sessUser(profileToUser(p));scheduleRender();}}));
   if(canMod("bundles")){on("ipc-patients",db.collection("patients"));on("ipc-devices",db.collection("devices"));on("ipc-events",db.collection("events"));on("ipc-surg",db.collection("surg"));}
   Object.entries(CONF).forEach(([key,name])=>unsubs.push(db.collection("config").doc(name).onSnapshot(d=>{const v=d.exists?d.data().v:null;
     S[SKEY[key]]=v??(key==="ipc-bench"?[]:{});mem[key]=S[SKEY[key]];loaded.add(key);scheduleRender();},()=>loaded.add(key))));
@@ -486,13 +504,14 @@ async function cloudAddUser(){
   const name=val("nn"),email=val("nu").toLowerCase(),role=$("#nr").value,p=$("#np").value;
   if(!name||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return fail("Enter the full name and a valid email.");
   if(p.length<6)return fail("Use a temporary password of at least 6 characters.");
-  const perms=readAccess();if(role==="link"&&!perms.mods.length)return fail("Tick at least one thing this link user can enter.");
+  let perms=readAccess();if(role==="link"&&!perms.mods.length)return fail("Tick at least one thing this link user can enter.");
+  if(role==="unit"){if(!perms.depts.length)return fail("Tick the department this unit head looks after.");perms={mods:[],depts:perms.depts};}
   const old=(S.removedUsers||[]).find(x=>(x.email||"").toLowerCase()===email);
-  if(old){try{await db.collection("users").doc(old.uid).update({name,role,perms:role==="link"?perms:null,active:true});go("users");
+  if(old){try{await db.collection("users").doc(old.uid).update({name,role,perms:role!=="team"?perms:null,active:true});go("users");
       toast(`${name} restored as ${ROLES[role]}. They sign in with their old password, or use Forgot password.`);}catch(e){fail(fbMsg(e));}return;}
   let sec;try{sec=firebase.apps.find(a=>a.name==="add-user")||firebase.initializeApp(CFG.firebase,"add-user");
     const c=await sec.auth().createUserWithEmailAndPassword(email,p),uid=c.user.uid;await sec.auth().signOut();
-    await db.collection("users").doc(uid).set({uid,name,email,role,perms:role==="link"?perms:null,active:true});
+    await db.collection("users").doc(uid).set({uid,name,email,role,perms:role!=="team"?perms:null,active:true});
     go("users");toast(`Added ${name}. Share the email and temporary password with them.`);}
   catch(e){fail(e?.code==="auth/email-already-in-use"?"This email already has a sign-in account from an earlier setup. Delete it in Firebase > Authentication > Users, then add it here again.":fbMsg(e));}
 }
@@ -509,7 +528,7 @@ async function cloudChangePw(){
 }
 
 /* ================= Activity log ================= */
-const TRACK={"ipc-audits":"Audit entry","ipc-actions":"Corrective action","ipc-patients":"Patient","ipc-devices":"Device","ipc-events":"Culture",
+const TRACK={"ipc-risk":"Risk assessment","ipc-outbreaks":"Outbreak","ipc-iso":"Isolation episode","ipc-expo":"Occupational exposure","ipc-fit":"Fit test","ipc-train":"Training session","ipc-sched":"Audit assignment","ipc-ast":"Susceptibility result","ipc-audits":"Audit entry","ipc-actions":"Corrective action","ipc-patients":"Patient","ipc-devices":"Device","ipc-events":"Culture",
   "ipc-users":"User account","ipc-mdro":"MDRO case","ipc-surg":"Surgical procedure"};
 const SNAP={};
 const snapOf=v=>Object.fromEntries((Array.isArray(v)?v:[]).map(x=>[x.id||x.username,JSON.stringify(x)]));
@@ -523,6 +542,14 @@ function logLabel(k,x){
     case "ipc-users":return `${x.name} (${x.username}), ${ROLES[x.role]}`;
     case "ipc-mdro":return `${x.mdroType||"MDRO"} ${x.organism||""}, ${x.unit||""}, ${fmt(x.date)}`;
     case "ipc-surg":{const p=S.patients.find(y=>y.id===x.patientId);return `${x.procedure}, ${fmt(x.date)}${p?`, ${p.unit} bed ${p.bed}`:""}`;}
+    case "ipc-outbreaks":return `${x.name}`;
+    case "ipc-iso":return `${x.unit} bed ${x.bed}, ${(x.precautions||[]).join(" + ")}`;
+    case "ipc-expo":return `${x.type}, ${x.dept}, ${fmt(x.date)}`;
+    case "ipc-fit":return `${x.staffName}, ${x.model}, ${fmt(x.date)}`;
+    case "ipc-train":return `${x.topic}, ${x.dept}, ${fmt(x.date)}`;
+    case "ipc-sched":return `${MODULES[x.module]?.name||x.module}, ${x.dept}, week of ${fmt(x.week)}`;
+    case "ipc-ast":return `${x.organism}, ${fmt(x.date)}`;
+    case "ipc-risk":return `Risk assessment ${x.year}`;
   }}catch(e){}return x.id||"";
 }
 function changeNote(k,a,b){
@@ -555,7 +582,7 @@ const newSalt=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
 /* ================= State ================= */
-const S={users:[],user:null,audits:[],actions:[],targets:{},bench:[],envCustom:{},log:[],settings:{},mdro:[],census:{},surg:[],patients:[],devices:[],events:[],round:{unit:"ICU",dis:false},bd:{unit:"all",period:"90"},pid:null,did:null,eid:null,view:"boot",module:null,form:{},session:{n:0,ok:0},
+const S={users:[],user:null,audits:[],actions:[],targets:{},bench:[],envCustom:{},log:[],settings:{},mdro:[],census:{},surg:[],cbahi:{},risk:[],outbreaks:[],iso:[],expo:[],fit:[],train:[],sched:[],ast:[],patients:[],devices:[],events:[],round:{unit:"ICU",dis:false},bd:{unit:"all",period:"90"},pid:null,did:null,eid:null,view:"boot",module:null,form:{},session:{n:0,ok:0},
   filter:{type:"all",dept:"all"},dash:{dept:"all",period:"90"},actFilter:"open",actionDraft:null,error:"",modal:null};
 const $=s=>document.querySelector(s);
 /* English digits everywhere: ٠١٢٣٤٥٦٧٨٩ and ۰۱۲۳۴۵۶۷۸۹ become 0-9 */
@@ -566,7 +593,7 @@ const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth
 const pctN=(a,b)=>b?Math.round(a/b*100):null;
 const pct=(a,b)=>b?Math.round(a/b*100)+"%":"–";
 const isTeam=()=>S.user&&S.user.role==="team";
-const TEAM_ONLY=["mdro","mdronew","mdroimp","report","settings","log","records","users","uaccess","dash","actions","actionNew","cases","case","bdash","bench"];
+const TEAM_ONLY=["risk","cbahi","spc","outbreaks","outbreak","isoboard","iso","staffhealth","expo","fit","training","train","abg","sched","mdro","mdronew","mdroimp","report","settings","log","records","users","uaccess","dash","actions","actionNew","cases","case","bdash","bench"];
 const BUNDLE_VIEWS=["crrsins","crrsmnt","surg","round","ptform","patient","devnew","device","check","culture","dischg","adh"];
 /* what an Infection Control Link user may enter; empty depts means every department */
 const ACCESS=[["hh","Hand Hygiene"],["ppe","PPE Compliance"],["waste","Waste Management"],["env","Environmental Cleaning"],["bundles","Device care bundles (patients, daily checks, cultures)"]];
@@ -634,6 +661,8 @@ function readBench(){
 
 function go(view,extra={}){
   if(TEAM_ONLY.includes(view)&&!isTeam())view="home";
+  if(S.user?.role==="unit"&&!["home","scorecard","changepw","login"].includes(view))view="home";
+  if(view==="scorecard"&&!(isTeam()||S.user?.role==="unit"))view="home";
   if(BUNDLE_VIEWS.includes(view)&&!canMod("bundles"))view="home";
   if(MODULES[view]&&!canMod(view))view="home";
   if(view==="round"&&!allowedUnits().includes(S.round.unit))S.round.unit=allowedUnits()[0];
@@ -682,6 +711,7 @@ function vLogin(){
 }
 function accessSummary(u){
   const p=permsOf(u);if(!p)return "Full access";
+  if(u.role==="unit")return `Scorecard only<br><small style="color:var(--muted)">${p.depts.join(", ")}</small>`;
   const m=p.mods.map(k=>ACCESS.find(x=>x[0]===k)?.[1].replace(/ \(.*/,"")).join(", ")||"Nothing";
   return `${m}<br><small style="color:var(--muted)">${p.depts.length?p.depts.join(", "):"All departments"}</small>`;
 }
@@ -715,7 +745,7 @@ function vUsers(){
     <div class="card">
       <div class="row"><div><label class="f" for="nn">Full name</label><input type="text" id="nn"></div>
         <div><label class="f" for="nu">${CLOUD?"Email":"Username"}</label><input type="${CLOUD?"email":"text"}" id="nu" autocapitalize="none" dir="ltr"></div></div>
-      <div class="row"><div><label class="f" for="nr">Role</label><select id="nr"><option value="link">${ROLES.link} (data entry only)</option><option value="team">${ROLES.team} (full access)</option></select></div>
+      <div class="row"><div><label class="f" for="nr">Role</label><select id="nr"><option value="link">${ROLES.link} (data entry only)</option><option value="unit">${ROLES.unit}</option><option value="team">${ROLES.team} (full access)</option></select></div>
         <div><label class="f" for="np">Temporary password <small>(6+ characters)</small></label><input type="text" id="np" autocomplete="off"></div></div>
       ${accessFields()}
       ${errHtml()}<div style="margin-top:16px"><button class="btn" data-a="adduser">Add user</button></div>
@@ -730,7 +760,9 @@ function vUAccess(){
     <p class="lead">${esc(CLOUD?u.email:u.username)}. Changes apply straight away${CLOUD?"":" the next time they sign in"}.</p>
     <div class="card"><label class="f" style="margin-top:0">Role</label>
       <div class="chips">${Object.entries(ROLES).map(([k,l])=>`<button class="chip" aria-pressed="${S.accRole===k}" data-a="accrole" data-v="${k}">${l}</button>`).join("")}</div>
-      ${S.accRole==="team"?`<p class="hint">${ROLES.team}: full access to everything, including dashboards, records and managing users.</p>`:accessFields(u.perms||DEFAULT_PERMS)}
+      ${S.accRole==="team"?`<p class="hint">${ROLES.team}: full access to everything, including dashboards, records and managing users.</p>`
+        :S.accRole==="unit"?`<p class="hint">${ROLES.unit}: sees the scorecard of the ticked departments only, and cannot enter or change anything.</p>${accessFields(u.perms||{mods:[],depts:[]}).replace(/<label class="f">Can enter data for[\s\S]*?<\/div>/,"")}`
+        :accessFields(u.perms||DEFAULT_PERMS)}
       ${errHtml()}<div style="margin-top:16px"><button class="btn block" data-a="saveacc">Save access</button></div></div></div>`;
 }
 function vChangePw(){
@@ -758,25 +790,47 @@ function inPeriod(a,p){if(p==="all")return true;const d=new Date();d.setDate(d.g
 
 /* ================= Views: main ================= */
 function vHome(){
-  const team=isTeam(),open=S.actions.filter(x=>x.status!=="Done"),over=open.filter(isOverdue);
+  const team=isTeam(),unit=S.user.role==="unit",open=S.actions.filter(x=>x.status!=="Done"),over=open.filter(isOverdue);
+  const tile=(v,c,t,d)=>`<button class="tile" style="--c:${c}" data-a="nav" data-v="${v}"><div><b>${t}</b><span>${d}</span></div><span class="go" aria-hidden="true">›</span></button>`;
+  const group=(n,title,sub,tiles)=>tiles.filter(Boolean).length?`<section class="hgroup"><h2><span class="hnum">${n}</span>${title}<small>${sub}</small></h2><div class="tiles grid">${tiles.filter(Boolean).join("")}</div></section>`:"";
+  const roundTxt=(()=>{const n=S.patients.filter(p=>p.status==="active"&&deptOk(p.unit)).length,due=S.devices.filter(d=>!d.removed&&ptOf(d.patientId)?.status==="active"&&deptOk(ptOf(d.patientId).unit)&&!checkedToday(d)).length;
+    return `Daily round by bed: ${n} active ${n===1?"patient":"patients"}${due?`, <span class="alert">${due} ${due===1?"check":"checks"} due</span>`:""}`;})();
+  const review=S.events.filter(e=>(!e.status||e.status==="Under review")&&assess(e).kind==="flag").length;
+  if(unit)return `<div class="wrap wide"><h1>Welcome, ${esc(S.user.name)}</h1><p class="lead">Your department's infection control results.</p>
+    <div class="tiles grid">${tile("scorecard","var(--primary)","Unit scorecard",(S.user.perms?.depts||[]).join(", ")||"No department linked")}</div></div>`;
+  const ra=S.risk.find(x=>x.year===thisYear()),activeOb=S.outbreaks.filter(o=>o.status!=="Closed").length;
   return `<div class="wrap wide">
     <h1>Welcome, ${esc(S.user.name)}</h1>
-    <p class="lead">${team?"Choose what you are recording or reviewing today.":"Choose the audit you are recording. Entries go straight to the Infection Control Team."}</p>
-    ${clusterBanner()}
-    <div class="tiles grid">
-      ${Object.keys(MODULES).some(canMod)?`<button class="tile" style="--c:var(--hh)" data-a="nav" data-v="surv"><div><b>Surveillance and audits</b><span>Hand hygiene, PPE, waste management, environmental cleaning</span></div><span class="go" aria-hidden="true">›</span></button>`:""}
-      ${!team&&canMod("bundles")?`<button class="tile" style="--c:#A23B72" data-a="nav" data-v="round"><div><b>Device care bundles</b><span>Daily round by bed: patients, devices and daily checks</span></div><span class="go" aria-hidden="true">›</span></button>`:""}
-      ${team?`
-      <button class="tile" style="--c:var(--ink)" data-a="nav" data-v="dash"><div><b>Dashboard</b><span>Monthly trends against targets, hand hygiene by moment and profession, most failed items</span></div><span class="go" aria-hidden="true">›</span></button>
-      <button class="tile" style="--c:var(--ink)" data-a="nav" data-v="records"><div><b>Records</b><span>${S.audits.length} saved ${S.audits.length===1?"entry":"entries"}, photos, CSV export</span></div><span class="go" aria-hidden="true">›</span></button>
-      <button class="tile" style="--c:var(--stop)" data-a="nav" data-v="actions"><div><b>Corrective actions</b><span>${open.length} open${over.length?`, <span class="alert">${over.length} overdue</span>`:""}${S.actions.filter(reauditDue).length?`, ${S.actions.filter(reauditDue).length} re-audit due`:""}</span></div><span class="go" aria-hidden="true">›</span></button>
-      <button class="tile" style="--c:var(--primary)" data-a="nav" data-v="bench"><div><b>Targets and benchmarks</b><span>Hospital targets and named benchmarks, for example MOH or group</span></div><span class="go" aria-hidden="true">›</span></button>
-      <button class="tile" style="--c:#7A3E9D" data-a="nav" data-v="mdro"><div><b>MDRO surveillance</b><span>${S.mdro.filter(m=>m.date?.startsWith(monthKey(today()))).length} cases this month. Import the lab line list, rates per 1,000 patient days</span></div><span class="go" aria-hidden="true">›</span></button>
-      <button class="tile" style="--c:var(--ink)" data-a="nav" data-v="report"><div><b>Monthly report</b><span>One printable report for the infection control committee</span></div><span class="go" aria-hidden="true">›</span></button>
-      <button class="tile" style="--c:var(--primary)" data-a="nav" data-v="settings"><div><b>Data and settings</b><span>Backup and merge, activity log, sign-out time, sample sizes${!S.settings.lastBackup||S.settings.lastBackup<addDays(today(),-7)?`, <span class="alert">backup due</span>`:""}</span></div><span class="go" aria-hidden="true">›</span></button>
-      <button class="tile" style="--c:var(--primary)" data-a="nav" data-v="users"><div><b>Manage users</b><span>${S.users.length} ${S.users.length===1?"account":"accounts"}</span></div><span class="go" aria-hidden="true">›</span></button>
-      <button class="tile" style="--c:#A23B72" data-a="nav" data-v="round"><div><b>Device care bundles</b><span>${(()=>{const n=S.patients.filter(p=>p.status==="active").length,due=S.devices.filter(d=>!d.removed&&ptOf(d.patientId)?.status==="active"&&!checkedToday(d)).length;return `Daily round by bed: ${n} active ${n===1?"patient":"patients"}${due?`, <span class="alert">${due} ${due===1?"check":"checks"} due</span>`:""}`;})()}</span></div><span class="go" aria-hidden="true">›</span></button>`:""}
-    </div></div>`;
+    <p class="lead">${team?"The infection control cycle: plan, record, investigate, review.":"Choose what you are recording. Entries go straight to the Infection Control Team."}</p>
+    ${clusterBanner()}${myWeek()}
+    ${team?group(1,"Plan","Priorities, accreditation and who audits what",[
+      tile("risk","#3E5560","Annual risk assessment",ra?`${thisYear()}: ${ra.items.filter(x=>riskScore(x)>=24).length} high-priority risks, ${(ra.plan||[]).length} goals`:`<span class="alert">${thisYear()} assessment not started</span>`),
+      tile("cbahi","#3E5560","CBAHI readiness",`${CBAHI_AREAS.filter(a=>S.cbahi?.[a.k]?.status==="Met").length} of ${CBAHI_AREAS.length} areas met`),
+      tile("sched","#3E5560","Audit schedule",`${S.sched.filter(a=>a.week===weekStart(today())).length} assignments this week`),
+      tile("bench","#3E5560","Targets and benchmarks","Hospital targets and named benchmarks, for example MOH or group")]):""}
+    ${group(team?2:"","Record","Daily surveillance and safety checks",[
+      Object.keys(MODULES).some(canMod)&&tile("surv","var(--hh)","Surveillance and audits","Hand hygiene, PPE, waste management, environmental cleaning"),
+      canMod("bundles")&&tile("round","#A23B72","Device care bundles",roundTxt),
+      team&&tile("mdro","#7A3E9D","MDRO surveillance",`${S.mdro.filter(m=>m.date?.startsWith(monthKey(today()))).length} cases this month`),
+      team&&tile("isoboard","#7A3E9D","Isolation board",`${S.iso.filter(x=>!x.end).length} patients on isolation now`),
+      team&&tile("staffhealth","#6B5B3E","Occupational health",`${S.expo.filter(x=>fuDue(x).length&&!x.closed).length?`<span class="alert">${S.expo.filter(x=>fuDue(x).length&&!x.closed).length} follow-ups due</span>, `:""}exposures and N95 fit testing`),
+      team&&tile("training","#6B5B3E","Training",`${S.train.filter(x=>x.date.startsWith(thisYear())).length} sessions this year`)])}
+    ${team?group(3,"Investigate","Cases, clusters and resistance",[
+      tile("cases","var(--stop)","HAI case review",review?`<span class="alert">${review} possible ${review===1?"case":"cases"} to review</span>`:"No cases waiting for review"),
+      tile("outbreaks","var(--stop)","Outbreaks",activeOb?`<span class="alert">${activeOb} active investigation${activeOb===1?"":"s"}</span>`:`${clusters().length} clusters in 60 days`),
+      tile("abg","var(--stop)","Antibiogram",`${S.ast.length} susceptibility results`)]):""}
+    ${team?group(4,"Review and report","Results, trends and feedback",[
+      tile("dash","var(--ink)","Audit dashboard","Compliance against targets, by department, room and moment"),
+      tile("bdash","var(--ink)","Device dashboard","Device days, bundle compliance, CAUTI, CLABSI, VAE and SSI rates"),
+      tile("spc","var(--ink)","Control charts","Real change or normal variation, month by month"),
+      tile("scorecard","var(--ink)","Unit scorecards","One page per department for its head"),
+      tile("actions","var(--ink)","Corrective actions",`${open.length} open${over.length?`, <span class="alert">${over.length} overdue</span>`:""}${S.actions.filter(reauditDue).length?`, ${S.actions.filter(reauditDue).length} re-audit due`:""}`),
+      tile("report","var(--ink)","Monthly report","One printable report for the infection control committee"),
+      tile("records","var(--ink)","Records",`${S.audits.length} saved ${S.audits.length===1?"entry":"entries"}, photos, CSV export`)]):""}
+    ${team?group(5,"Administration","Accounts and data",[
+      tile("users","var(--primary)","Manage users",`${S.users.length} ${S.users.length===1?"account":"accounts"}`),
+      tile("settings","var(--primary)","Data and settings",`Backup, activity log, sign-out time, sample sizes${!S.settings.lastBackup||S.settings.lastBackup<addDays(today(),-7)?`, <span class="alert">backup due</span>`:""}`)]):""}
+  </div>`;
 }
 function vSurv(){
   return `<div class="wrap wide">${crumb("Surveillance and audits")}
@@ -1764,7 +1818,7 @@ function clusterBanner(){
   if(!isTeam())return "";const l=activeClusters();if(!l.length)return "";
   return `<div class="alert-box" role="alert"><b>Possible cluster${l.length>1?"s":""}</b>
     ${l.map(c=>`<div class="row" style="align-items:center;margin-top:6px"><div style="flex:3">${esc(c.orgTxt)} in <b>${esc(c.unit)}</b>: ${c.n} patients between ${fmt(c.first)} and ${fmt(c.last)}.</div>
-      <div style="flex:0 0 auto"><button class="btn ghost small" data-a="ackcl" data-v="${esc(c.key)}">Mark as reviewed</button></div></div>`).join("")}
+      <div style="flex:0 0 auto">${S.outbreaks.some(o=>o.clusterKey===c.key)?`<span class="tag mid">Investigation open</span>`:`<button class="btn small" data-a="obfromcl" data-v="${esc(c.key)}">Open investigation</button>`} <button class="btn ghost small" data-a="ackcl" data-v="${esc(c.key)}">Mark as reviewed</button></div></div>`).join("")}
     <p class="hint" style="margin:8px 0 0">Same organism in the same unit in two or more patients within 14 days, from cultures and MDRO cases. Check for a common source and review isolation.</p></div>`;
 }
 /* ---------- device removal prompts ---------- */
@@ -2287,7 +2341,8 @@ function render(){
   const bar=S.user?`<header class="bar"><div class="wrap"><button class="brand" data-a="nav" data-v="home" aria-label="Home"><img src="${LOGO}" alt="Al-Sobh Hospital"><span>Infection Control Platform<small>Infection Prevention and Control</small></span></button>
     <div class="who">${esc(S.user.name)}<br><span class="role ${S.user.role}">${ROLES[S.user.role]}</span><br>
     <button data-a="nav" data-v="changepw">Change password</button> <button data-a="logout">Sign out</button></div></div></header>`:"";
-  const views={setup:vSetup,login:vLogin,home:vHome,surv:vSurv,records:vRecords,dash:vDash,actions:vActions,actionNew:vActionNew,users:vUsers,changepw:vChangePw,hh:vHH,ppe:vPPE,waste:vWaste,env:vEnv,round:vRound,ptform:vPtForm,patient:vPatient,devnew:vDevNew,device:vDevice,check:vCheck,culture:vCulture,cases:vCases,case:vCase,bdash:vBDash,surg:vSurg,crrsins:vCrrs,crrsmnt:vCrrs,uaccess:vUAccess,settings:vSettings,log:vLog,report:vReport,mdro:vMdro,mdronew:vMdroNew,mdroimp:vMdroImp,dischg:vDischarge,bench:vBench,adh:vAdh};
+  const views={setup:vSetup,login:vLogin,home:vHome,surv:vSurv,records:vRecords,dash:vDash,actions:vActions,actionNew:vActionNew,users:vUsers,changepw:vChangePw,hh:vHH,ppe:vPPE,waste:vWaste,env:vEnv,round:vRound,ptform:vPtForm,patient:vPatient,devnew:vDevNew,device:vDevice,check:vCheck,culture:vCulture,cases:vCases,case:vCase,bdash:vBDash,surg:vSurg,crrsins:vCrrs,crrsmnt:vCrrs,uaccess:vUAccess,settings:vSettings,log:vLog,risk:vRisk,cbahi:vCbahi,spc:vSpc,outbreaks:vOutbreaks,outbreak:vOutbreak,
+  isoboard:vIsoBoard,iso:vIso,staffhealth:vStaffHealth,expo:vExpo,fit:vFit,training:vTraining,train:vTrain,abg:vAbg,sched:vSched,scorecard:vScorecard,report:vReport,mdro:vMdro,mdronew:vMdroNew,mdroimp:vMdroImp,dischg:vDischarge,bench:vBench,adh:vAdh};
   const modal=S.modal?`<div class="modal" data-a="closemodal"><div class="inner"><button class="btn ghost small" data-a="closemodal">Close</button>${S.modal}</div></div>`:"";
   const foot=`<footer class="foot"><span>© ${new Date().getFullYear()} <b>Dr. Asem Naji</b>. All rights reserved.</span><span>Infection Prevention and Control, Al-Sobh Hospital, Jeddah</span></footer>`;
   $("#app").innerHTML=bar+(views[S.view]||vLogin)()+foot+modal;
@@ -2319,8 +2374,9 @@ async function addUser(){
   if(!/^[a-z0-9._-]{3,}$/.test(username))return fail("Usernames use 3 or more letters, numbers, dots, dashes or underscores, with no spaces.");
   if(S.users.some(u=>u.username===username))return fail("That username is already taken.");
   if(p.length<6)return fail("Use a temporary password of at least 6 characters.");
-  const perms=readAccess();if(role==="link"&&!perms.mods.length)return fail("Tick at least one thing this link user can enter.");
-  const salt=newSalt();S.users.push({name,username,role,salt,hash:await hashPw(p,salt),...(role==="link"?{perms}:{})});
+  let perms=readAccess();if(role==="link"&&!perms.mods.length)return fail("Tick at least one thing this link user can enter.");
+  if(role==="unit"){if(!perms.depts.length)return fail("Tick the department this unit head looks after.");perms={mods:[],depts:perms.depts};}
+  const salt=newSalt();S.users.push({name,username,role,salt,hash:await hashPw(p,salt),...(role!=="team"?{perms}:{})});
   await sset("ipc-users",S.users);go("users");toast(`Added ${name}`);
 }
 async function resetPw(username){
@@ -2455,7 +2511,7 @@ document.addEventListener("click",async e=>{
     if(k==="resp"&&f.seen&&!f.seen.includes(v))f.seen.push(v);
     if(k==="action"&&v!=="missed")f.gloves="";
     if(k==="dept"||k==="specialty")f.specialtyOther=f.specialtyOther||"";
-    f[k]=f[k]===v&&(k==="feedback"||k==="validation")?"":v;S.error="";render();}
+    f[k]=f[k]===v&&(k==="feedback"||k==="validation"||k==="closed")?"":v;S.error="";render();}
   else if(a==="prec"){const v=b.dataset.v;f.precautions=f.precautions.includes(v)?f.precautions.filter(x=>x!==v):[...f.precautions,v];S.error="";render();}
   else if(a==="envdrop"){const r=b.dataset.v;f.seen=f.seen.filter(x=>x!==r);envList(envProfile(f),r).forEach(i=>delete f.st[i.k]);if(f.resp===r)f.resp=f.seen[0]||"";render();}
   else if(a==="envx"){const k=b.dataset.k,v=f.st[k];if(!v)f.st[k]="n";else if(v==="n")f.st[k]="na";else delete f.st[k];render();}
@@ -2480,7 +2536,6 @@ document.addEventListener("click",async e=>{
     await sset("ipc-census",S.census);render();toast("Patient days saved");}
   else if(a==="doimport"&&isTeam()){const ok=impRows().filter(r=>!r.problem&&!r.dup).map(({problem,dup,...r})=>({...r,id:uid(),mdroType:r.mdroType||"Other MDRO",by:S.user.name,src:"import"}));
     S.mdro.push(...ok);await sset("ipc-mdro",S.mdro);S.imp=null;go("mdro");toast(`Imported ${ok.length} cases`);}
-  else if(a==="print")window.print();
   else if(a==="editaction"&&isTeam()){const x=S.actions.find(y=>y.id===b.dataset.id);go("actionNew",{actionDraft:{...x}});}
   else if(a==="backup"&&isTeam())backup(false);
   else if(a==="backupph"&&isTeam())backup(true);
@@ -2492,13 +2547,66 @@ document.addEventListener("click",async e=>{
   else if(a==="restoreuser"&&isTeam()&&CLOUD)restoreUser(b.dataset.u);
   else if(a==="saveacc"&&isTeam()&&S.accRole==="team"){const u=S.users.find(x=>x.username===S.editU);u.role="team";u.perms=null;S.accRole=null;
     await sset("ipc-users",S.users);go("users");toast(`${u.name} is now ${ROLES.team}`);}
+  else if(a==="saveacc"&&isTeam()&&S.accRole==="unit"){const u=S.users.find(x=>x.username===S.editU),p=readAccess();if(!p.depts.length)return fail("Tick the department this unit head looks after.");
+    u.role="unit";u.perms={mods:[],depts:p.depts};S.accRole=null;await sset("ipc-users",S.users);go("users");toast(`${u.name} is now ${ROLES.unit}`);}
   else if(a==="saveacc"&&isTeam()){const u=S.users.find(x=>x.username===S.editU),p=readAccess();if(!p.mods.length)return fail("Tick at least one thing this user can enter.");u.role="link";S.accRole=null;
     u.perms=p;await sset("ipc-users",S.users);go("users");toast(`Access updated for ${u.name}`);}
   else if(a==="resetpw")CLOUD?cloudResetPw(b.dataset.u):resetPw(b.dataset.u);
   else if(a==="changepw")CLOUD?cloudChangePw():changePw();
   else if(await handleBundle(a,b))return;
   else if(a==="deluser"){if(confirm(`Remove ${b.dataset.u}? They will no longer be able to sign in.`)){S.users=S.users.filter(u=>u.username!==b.dataset.u);await sset("ipc-users",S.users);render();}}
+  else if(a==="print")window.print();
   else if(!isTeam())return;
+  /* plan */
+  else if(a==="riskstart"){const y=S.riskYear||thisYear();S.risk.push({id:uid(),year:y,created:today(),by:S.user.name,items:RISK_TEMPLATE.map(([c,h])=>({id:uid(),category:c,hazard:h,prob:"",impact:"",prep:""})),plan:[]});await sset("ipc-risk",S.risk);render();}
+  else if(a==="riskadd"){const h=val("rnh");if(!h)return;const r=S.risk.find(x=>x.year===(S.riskYear||thisYear()));r.items.push({id:uid(),category:"Added",hazard:h,prob:"",impact:"",prep:""});await sset("ipc-risk",S.risk);render();}
+  else if(a==="riskdel"){const r=S.risk.find(x=>x.year===(S.riskYear||thisYear()));if(confirm("Remove this risk?")){r.items=r.items.filter(x=>x.id!==b.dataset.id);await sset("ipc-risk",S.risk);render();}}
+  else if(a==="planadd"){const r=S.risk.find(x=>x.year===(S.riskYear||thisYear())),g=val("pg2");if(!g){toast("Write the goal",true);return;}
+    (r.plan=r.plan||[]).push({id:uid(),hazard:$("#pg1").value,goal:g,measure:val("pg3"),owner:val("pg4"),due:$("#pg5").value});await sset("ipc-risk",S.risk);render();toast("Goal added");}
+  else if(a==="plandel"){const r=S.risk.find(x=>x.year===(S.riskYear||thisYear()));r.plan=r.plan.filter(x=>x.id!==b.dataset.id);await sset("ipc-risk",S.risk);render();}
+  else if(a==="savecbahi"){const c={...(S.cbahi||{})};document.querySelectorAll("[data-cb]").forEach(i=>{const [k,f2]=i.dataset.cb.split("|");c[k]={...(c[k]||{}),[f2]:i.value};});S.cbahi=c;await sset("ipc-cbahi",c);render();toast("Saved");}
+  else if(a==="schedw"){S.schedW=b.dataset.v;render();}
+  else if(a==="schedadd"){const t=+$("#sa4").value||0;if(t<1){toast("Enter how many audits",true);return;}
+    S.sched.push({id:uid(),week:S.schedW||weekStart(today()),assignee:$("#sa1").value,module:$("#sa2").value,dept:$("#sa3").value,target:t});await sset("ipc-sched",S.sched);render();toast("Assigned");}
+  else if(a==="scheddel"){S.sched=S.sched.filter(x=>x.id!==b.dataset.id);await sset("ipc-sched",S.sched);render();}
+  else if(a==="schedcopy"){const w=S.schedW||weekStart(today());S.sched.push(...S.sched.filter(x=>x.week===addDays(w,-7)).map(x=>({...x,id:uid(),week:w})));await sset("ipc-sched",S.sched);render();}
+  /* record */
+  else if(a==="newiso")go("iso",{form:{unit:"",bed:"",mrn:"",precautions:[],reason:"",start:today(),sign:"",ppe:"",room:"",equip:"",note:""}});
+  else if(a==="isofrommdro"){const m=S.mdro.find(x=>x.id===b.dataset.id);go("iso",{form:{unit:m.unit,bed:"",mrn:m.mrn||"",mdroId:m.id,precautions:m.mdroType==="C. difficile"?["Contact plus (C. difficile)"]:["Contact"],
+    reason:ISO_REASONS.includes(m.mdroType)?m.mdroType:"Other",start:today(),sign:"",ppe:"",room:"",equip:"",note:""}});}
+  else if(a==="editiso")go("iso",{form:{...S.iso.find(x=>x.id===b.dataset.id)}});
+  else if(a==="isoprec"){const v=b.dataset.v;f.precautions=(f.precautions||[]).includes(v)?f.precautions.filter(x=>x!==v):[...(f.precautions||[]),v];render();}
+  else if(a==="saveiso")saveIso();
+  else if(a==="endiso"){const x=S.iso.find(y=>y.id===b.dataset.id);if(confirm(`End isolation for bed ${x.bed}?`)){x.end=today();await sset("ipc-iso",S.iso);render();toast("Isolation ended");}}
+  else if(a==="shtab"){S.shTab=b.dataset.v;render();}
+  else if(a==="newexpo")go("expo",{form:{date:today(),staffName:"",staffId:"",dept:"",category:"",type:"",device:"",source:"",pep:"",pep2h:"",reported:"",fu:{},closed:"",note:""}});
+  else if(a==="editexpo")go("expo",{form:JSON.parse(JSON.stringify(S.expo.find(x=>x.id===b.dataset.id)))});
+  else if(a==="saveexpo")saveExpo();
+  else if(a==="newfit")go("fit",{form:{staffName:"",staffId:"",dept:"",date:today(),model:"",size:"",method:"",result:""}});
+  else if(a==="savefit")saveFit();
+  else if(a==="newtrain")go("train",{form:{date:today(),dept:"",minutes:"",topic:"",trainer:S.user.name,attendees:"",note:""}});
+  else if(a==="edittrain")go("train",{form:{...S.train.find(x=>x.id===b.dataset.id)}});
+  else if(a==="savetrain")saveTrain();
+  else if(a==="savehc"){const hc={...(S.settings.headcount||{})};document.querySelectorAll("[data-hc]").forEach(i=>{if(i.value==="")delete hc[i.dataset.hc];else hc[i.dataset.hc]=+i.value;});S.settings.headcount=hc;await sset("ipc-settings",S.settings);render();toast("Headcounts saved");}
+  /* investigate */
+  else if(a==="newob"){const n=prompt("Name of the investigation, e.g. CRE in ICU, October 2026");if(!n)return;const o={id:uid(),name:n.trim(),unit:"ICU",organism:"",start:today(),status:"Active",definition:"",cases:[],measures:{},log:[{date:today(),by:S.user.name,text:"Investigation opened"}]};
+    S.outbreaks.push(o);await sset("ipc-outbreaks",S.outbreaks);go("outbreak",{obId:o.id});}
+  else if(a==="obfromcl"){const c=clusters(addDays(today(),-60),today()).concat(clusters()).find(x=>x.key===b.dataset.v);if(!c)return;
+    const cases=[];S.events.forEach(e=>{const p=ptOf(e.patientId);if(p&&orgKey(e.organism)===c.org&&unitAt(p,e.date)===c.unit&&e.date>=c.first&&e.date<=c.last)cases.push({id:uid(),date:e.date,mrn:p.mrn,unit:c.unit,status:"Confirmed",note:`${e.specimen} culture`});});
+    S.mdro.forEach(m=>{if(orgKey(m.organism)===c.org&&m.unit===c.unit&&m.date>=c.first&&m.date<=c.last&&!cases.some(x=>x.mrn===m.mrn&&x.date===m.date))cases.push({id:uid(),date:m.date,mrn:m.mrn||"",unit:c.unit,status:"Confirmed",note:`${m.mdroType} ${m.specimen||""}`.trim()});});
+    const o={id:uid(),name:`${c.orgTxt} in ${c.unit}, ${monthName(monthKey(c.first))}`,unit:c.unit,organism:c.orgTxt,start:c.first,status:"Active",clusterKey:c.key,definition:"",cases,measures:{},log:[{date:today(),by:S.user.name,text:"Opened from a cluster alert"}]};
+    S.outbreaks.push(o);await sset("ipc-outbreaks",S.outbreaks);go("outbreak",{obId:o.id});toast(`Investigation opened with ${cases.length} cases`);}
+  else if(a==="openob")go("outbreak",{obId:b.dataset.id});
+  else if(["obsavedef","obcaseadd","obcasedel","oblogadd","obclose","obreopen"].includes(a)){const o=S.outbreaks.find(x=>x.id===S.obId);
+    if(a==="obsavedef")o.definition=$("#obd").value;
+    if(a==="obcaseadd"){if(!val("oc2")){toast("Enter the MRN",true);return;}o.cases.push({id:uid(),date:$("#oc1").value,mrn:val("oc2"),unit:$("#oc3").value,status:$("#oc4").value,note:val("oc5")});}
+    if(a==="obcasedel")o.cases=o.cases.filter(x=>x.id!==b.dataset.id);
+    if(a==="oblogadd"){const t=val("ol1");if(!t)return;(o.log=o.log||[]).push({date:today(),by:S.user.name,text:t});}
+    if(a==="obclose"&&confirm("Close this outbreak?")){o.status="Closed";o.closed=today();(o.log=o.log||[]).push({date:today(),by:S.user.name,text:"Outbreak closed"});}
+    if(a==="obreopen"){o.status="Active";o.closed="";o.log.push({date:today(),by:S.user.name,text:"Reopened"});}
+    await sset("ipc-outbreaks",S.outbreaks);render();}
+  else if(a==="asttemplate")astTemplate();
+  else if(a==="abgcsv")abgcsv();
   else if(a==="viewphoto"){const rec=S.audits.find(x=>x.id===b.dataset.id),ps=await loadPhotos(rec);
     S.modal=ps.length?`<div class="gal">${ps.map((p,i)=>`<img src="${p}" alt="Audit photo ${i+1}">`).join("")}</div>`:`<p>Photos not found on this device.</p>`;render();}
   else if(a==="del"){if(confirm("Delete this entry and its photos?")){const rec=S.audits.find(x=>x.id===b.dataset.id);S.audits=S.audits.filter(x=>x.id!==rec.id);await sset("ipc-audits",S.audits);
@@ -2530,6 +2638,14 @@ document.addEventListener("change",async e=>{
   if(t.dataset.mdroimp&&t.files[0]&&isTeam()){mdroFile(t.files[0]);t.value="";return;}
   if(t.dataset.imp&&S.imp){S.imp.map[t.dataset.imp]=t.value;render();return;}
   if(t.dataset.rep){S.repMonth=t.value;render();return;}
+  if(t.dataset.risky){S.riskYear=t.value;render();return;}
+  if(t.dataset.riskf){const [id,k]=t.dataset.riskf.split("|"),r=S.risk.find(x=>x.year===(S.riskYear||thisYear())),it=r.items.find(x=>x.id===id);it[k]=t.value;await sset("ipc-risk",S.risk);render();return;}
+  if(t.dataset.spc){S.spcF[t.dataset.spc]=t.value;render();return;}
+  if(t.dataset.obm!==undefined&&S.view==="outbreak"){const o=S.outbreaks.find(x=>x.id===S.obId);o.measures=o.measures||{};if(t.checked)o.measures[t.dataset.obm]=today();else delete o.measures[t.dataset.obm];await sset("ipc-outbreaks",S.outbreaks);render();return;}
+  if(t.dataset.fu&&S.form){S.form.fu=S.form.fu||{};if(t.value)S.form.fu[t.dataset.fu]=t.value;else delete S.form.fu[t.dataset.fu];render();return;}
+  if(t.dataset.abg){if(t.dataset.abg==="y")S.abgY=t.value;else S.abgS=t.value;render();return;}
+  if(t.dataset.astimp&&t.files[0]&&isTeam()){astFile(t.files[0]);t.value="";return;}
+  if(t.dataset.scd){S.scD=t.value;render();return;}
   if(t.dataset.mdro){S.mdroF[t.dataset.mdro]=t.value;render();return;}
   if(t.dataset.restore&&t.files[0]&&isTeam()){restore(t.files[0],t.dataset.restore);t.value="";return;}
   if(t.id==="logq"){S.logQ=t.value;render();return;}
@@ -2750,9 +2866,474 @@ function vReport(){
       <p>${opened.length} opened and ${closed.length} closed this month. ${over.length} overdue and ${rea.length} awaiting re-audit now.</p>
       ${[...over,...rea].length?`<div class="scroll"><table><thead><tr><th>Department</th><th>Issue</th><th>Owner</th><th>Status</th></tr></thead><tbody>
       ${[...new Set([...over,...rea])].map(x=>`<tr><td>${esc(x.dept)}</td><td>${esc(x.issue)}</td><td>${esc(x.owner||"–")}</td><td>${isOverdue(x)?`Overdue since ${fmt(x.due)}`:"Re-audit due"}</td></tr>`).join("")}</tbody></table></div>`:""}</section>
+    <section><h2>11. Control charts</h2>
+      <p class="hint">Red points are signals of real change. Points inside the dashed limits are normal variation.</p>
+      ${spcSVG(spcSeries("p","hh","all"),"Hand hygiene compliance","p-chart, percent")}
+      ${["cl","uc","mv"].map(k=>spcSVG(spcSeries("u",k,"all"),`${DEV[k].hai} rate`,"u-chart, per 1,000 device days")).join("")}</section>
+    <section><h2>12. Isolation and outbreaks</h2>
+      ${(()=>{const iso=S.iso.filter(x=>x.start<pE&&(!x.end||x.end>=pS)),obs=S.outbreaks.filter(o=>o.start<pE&&(!o.closed||o.closed>=pS));
+        return `<p>${iso.length} patients on isolation during the month; room checks all met for ${pct(iso.filter(isoOk).length,iso.length)}.
+          ${obs.length?`Outbreak investigations: ${obs.map(o=>`${esc(o.name)} (${o.cases.length} cases, ${o.status==="Closed"?`closed ${fmt(o.closed)}`:"active"})`).join("; ")}.`:"No outbreak investigations."}</p>`;})()}</section>
+    <section><h2>13. Occupational health and training</h2>
+      ${(()=>{const ex=S.expo.filter(x=>monthKey(x.date)===m),tr=S.train.filter(x=>monthKey(x.date)===m);
+        return `<p>${ex.length} staff exposures${ex.length?`: ${EXPO_TYPES.map(t=>[t,ex.filter(x=>x.type===t).length]).filter(([,n])=>n).map(([t,n])=>`${t.toLowerCase()} ${n}`).join(", ")}`:""}.
+          ${S.expo.filter(x=>fuDue(x).length&&!x.closed).length} follow-ups overdue now. ${S.fit.filter(fitValid).length} valid N95 fit tests.
+          ${tr.length} training sessions with ${tr.reduce((t,x)=>t+attendeesOf(x).length,0)} attendances.</p>`;})()}</section>
     <section class="sign"><div><span>Prepared by</span></div><div><span>Infection control committee chair</span></div><div><span>Date</span></div></section>
     <p class="hint" style="text-align:center;margin-top:18px">© ${new Date().getFullYear()} Dr. Asem Naji. Al-Sobh Hospital Infection Control Platform.</p>
   </div>`;
+}
+
+/* ================= Shared helpers for the planning, safety and staff modules ================= */
+const opt=(list,v)=>list.map(o=>`<option ${o===v?"selected":""}>${esc(o)}</option>`).join("");
+const inputRow=(id,label,key,f,type="text",extra="")=>`<label class="f" for="${id}">${label}</label><input type="${type}" id="${id}" data-bind="${key}" value="${esc(f[key]??"")}" ${extra}>`;
+const selRow=(id,label,key,list,f,ph="Select")=>`<label class="f" for="${id}">${label}</label><select id="${id}" data-bind="${key}"><option value="">${ph}</option>${opt(list,f[key])}</select>`;
+const yesNo=(label,key,f,opts=["Yes","No"])=>chipsBlock(label,key,opts,f);
+const thisYear=()=>today().slice(0,4);
+const monthsBack=n=>{const out=[];let m=monthKey(today());for(let i=0;i<n;i++){out.unshift(m);m=prevMonth(m);}return out;};
+const monthEnd=m=>addDays(addDays(m+"-01",32).slice(0,7)+"-01",0);
+const okTag=(ok,yes="Yes",no="No")=>`<span class="tag ${ok?"ok":"no"}">${ok?yes:no}</span>`;
+async function saveRec(key,arr,rec){const i=arr.findIndex(x=>x.id===rec.id);if(i>-1)arr[i]=rec;else arr.push(rec);await sset(key,arr);}
+async function delRec(key,name,id,label){if(!confirm(`Delete this ${label}?`))return;S[name]=S[name].filter(x=>x.id!==id);await sset(key,S[name]);render();}
+const subnav=(items,cur)=>`<div class="chips subnav" role="tablist">${items.map(([v,l])=>`<button class="chip" role="tab" aria-pressed="${cur===v}" data-a="nav" data-v="${v}">${l}</button>`).join("")}</div>`;
+
+/* ================= 1. Annual IPC risk assessment ================= */
+/* Score = probability (1-4) x impact (1-4) x preparedness gap (1 good, 2 fair, 3 poor). 24 and above is a high priority. */
+const RISK_TEMPLATE=[
+  ["Device-associated infection","CLABSI"],["Device-associated infection","CAUTI"],["Device-associated infection","Ventilator-associated events"],
+  ["Procedure-associated infection","Surgical site infection"],["Transmission","MRSA transmission"],["Transmission","Carbapenem-resistant organisms (CRE, CRAB, CRPA)"],
+  ["Transmission","Clostridioides difficile"],["Transmission","Candida auris"],["Practice","Hand hygiene compliance"],["Practice","PPE and isolation compliance"],
+  ["Environment","Environmental cleaning"],["Environment","Construction and renovation (ICRA)"],["Environment","Water safety and Legionella"],
+  ["Reprocessing","Sterilization or high-level disinfection failure"],["Reprocessing","Endoscope reprocessing"],
+  ["Respiratory and emerging","Tuberculosis exposure"],["Respiratory and emerging","Influenza and respiratory virus outbreaks"],["Respiratory and emerging","MERS-CoV"],
+  ["Respiratory and emerging","Mass gatherings (Hajj and Umrah seasons)"],["Respiratory and emerging","Measles and varicella exposure"],
+  ["Staff safety","Needlestick and sharps injuries"],["Staff safety","Staff immunization gaps"],["Staff safety","N95 fit testing coverage"],["Waste","Medical waste handling"]];
+const riskScore=x=>(+x.prob||0)*(+x.impact||0)*(+x.prep||0);
+const riskLevel=sc=>sc>=24?["High","no"]:sc>=12?["Medium","mid"]:sc>0?["Low","ok"]:["Not scored","mid"];
+function riskEvidence(h){
+  const y=thisYear(),aud=k=>{const l=S.audits.filter(a=>a.type===k&&a.date.startsWith(y));return l.length?`${pctN(l.filter(a=>a.compliant).length,l.length)}% compliant this year (n=${l.length})`:"";};
+  const dm=devMetrics(y+"-01-01",addDays(today(),1),"all"),r=k=>{const x=dm.rows.find(z=>z.k===k);return x&&x.dd?`${x.hai} confirmed, ${x.rate.toFixed(2)} per 1,000 device days this year`:"";};
+  const m=t=>{const n=S.mdro.filter(x=>x.date?.startsWith(y)&&(Array.isArray(t)?t.includes(x.mdroType):x.mdroType===t)).length;return n?`${n} cases this year`:"";};
+  return({"CLABSI":r("cl"),"CAUTI":r("uc"),"Ventilator-associated events":r("mv"),"Surgical site infection":dm.ops?`${dm.ssi} SSI in ${dm.ops} operations this year`:"",
+    "MRSA transmission":m("MRSA"),"Carbapenem-resistant organisms (CRE, CRAB, CRPA)":m(["CRE","CRAB","CRPA"]),"Clostridioides difficile":m("C. difficile"),"Candida auris":m("Candida auris"),
+    "Hand hygiene compliance":aud("hh"),"PPE and isolation compliance":aud("ppe"),"Environmental cleaning":aud("env"),"Medical waste handling":aud("waste"),
+    "Needlestick and sharps injuries":(()=>{const n=S.expo.filter(x=>x.date.startsWith(y)).length;return n?`${n} exposures this year`:"";})(),
+    "N95 fit testing coverage":(()=>{const n=S.fit.filter(x=>x.result==="Pass"&&addDays(x.date,365)>=today()).length;return n?`${n} staff with a valid fit test`:"";})()})[h]||"";
+}
+function vRisk(){
+  const yr=S.riskYear||thisYear(),ra=S.risk.find(x=>x.year===yr);
+  const years=[...new Set([thisYear(),String(+thisYear()+1),...S.risk.map(x=>x.year)])].sort().reverse();
+  if(!ra)return `<div class="wrap wide">${crumb("Annual risk assessment")}<h1>Annual risk assessment</h1>
+    <p class="lead">The yearly infection prevention and control risk assessment: score each risk, rank them, and turn the top risks into the year's plan.</p>
+    <div class="row" style="align-items:end"><div><label class="f" for="ry">Year</label><select id="ry" data-risky="1">${opt(years,yr)}</select></div>
+      <div style="flex:0 0 auto"><button class="btn" data-a="riskstart">Start the ${yr} assessment</button></div></div>
+    <p class="hint">It starts with ${RISK_TEMPLATE.length} common hospital risks, including MERS-CoV and mass gatherings. You can add or remove risks.</p></div>`;
+  const items=ra.items.slice().sort((a,b)=>riskScore(b)-riskScore(a));
+  const sc=(x,k,n,lab)=>`<select data-riskf="${x.id}|${k}" aria-label="${lab}">${[["","–"],...[...Array(n)].map((_,i)=>[String(i+1),String(i+1)])].map(([v,l])=>`<option value="${v}" ${String(x[k]||"")===v?"selected":""}>${l}</option>`).join("")}</select>`;
+  return `<div class="wrap wide">${crumb("Annual risk assessment")}
+    <h1>Risk assessment ${yr}</h1>
+    <div class="row" style="align-items:end"><div><label class="f" for="ry">Year</label><select id="ry" data-risky="1">${opt(years,yr)}</select></div>
+      <div style="flex:0 0 auto"><button class="btn ghost" data-a="print">Print</button></div></div>
+    <div class="card" style="margin-top:12px"><b>How to score.</b> Probability 1 (rare) to 4 (expected). Impact 1 (minor) to 4 (life-threatening or major disruption).
+      Preparedness 1 (good), 2 (fair), 3 (poor). <b>Score</b> = probability × impact × preparedness, out of 48. High 24 and above, medium 12 to 23.</div>
+    <h2>Risks, highest first</h2>
+    <div class="scroll"><table class="bench"><thead><tr><th>Risk</th><th>Platform data</th><th>Probability</th><th>Impact</th><th>Preparedness</th><th>Score</th><th></th></tr></thead><tbody>
+    ${items.map(x=>{const s2=riskScore(x),[lv,c]=riskLevel(s2);return `<tr><th scope="row">${esc(x.hazard)}<br><small style="font-weight:400;color:var(--muted)">${esc(x.category)}</small></th>
+      <td><small>${esc(riskEvidence(x.hazard))||"–"}</small></td><td>${sc(x,"prob",4,"Probability")}</td><td>${sc(x,"impact",4,"Impact")}</td><td>${sc(x,"prep",3,"Preparedness")}</td>
+      <td class="c"><b>${s2||"–"}</b><br><span class="tag ${c}">${lv}</span></td><td><button class="link-btn" style="color:var(--stop)" data-a="riskdel" data-id="${x.id}">Remove</button></td></tr>`;}).join("")}</tbody></table></div>
+    <div class="row" style="margin-top:10px;align-items:end"><div><label class="f" for="rnh">Add a risk</label><input type="text" id="rnh" placeholder="e.g. Dialysis unit bloodstream infections"></div>
+      <div style="flex:0 0 auto"><button class="btn ghost" data-a="riskadd">Add risk</button></div></div>
+    <h2>Plan for ${yr}</h2>
+    <p class="lead">One goal for each high-priority risk. Goals should be measurable, with a target and a date.</p>
+    ${(ra.plan||[]).length?`<div class="scroll"><table><thead><tr><th>Risk</th><th>Goal</th><th>Measure and target</th><th>Owner</th><th>Due</th><th></th></tr></thead><tbody>
+      ${ra.plan.map(p=>`<tr><td>${esc(p.hazard)}</td><td>${esc(p.goal)}</td><td>${esc(p.measure)}</td><td>${esc(p.owner)}</td><td>${p.due?fmt(p.due):"–"}</td><td><button class="link-btn" style="color:var(--stop)" data-a="plandel" data-id="${p.id}">Remove</button></td></tr>`).join("")}</tbody></table></div>`:`<div class="card">No goals yet.</div>`}
+    <div class="card" style="margin-top:10px"><div class="row">
+      <div><label class="f" for="pg1">Risk</label><select id="pg1">${items.filter(x=>riskScore(x)).map(x=>`<option>${esc(x.hazard)}</option>`).join("")||"<option>Score the risks first</option>"}</select></div>
+      <div><label class="f" for="pg2">Goal</label><input type="text" id="pg2" placeholder="e.g. Reduce CLABSI in ICU"></div></div>
+      <div class="row"><div><label class="f" for="pg3">Measure and target</label><input type="text" id="pg3" placeholder="e.g. Below 1.0 per 1,000 line days by December"></div>
+      <div><label class="f" for="pg4">Owner</label><input type="text" id="pg4"></div><div><label class="f" for="pg5">Due</label><input type="date" id="pg5"></div></div>
+      <div style="margin-top:12px"><button class="btn ghost" data-a="planadd">Add goal</button></div></div>
+  </div>`;
+}
+
+/* ================= 2. CBAHI readiness ================= */
+/* Requirement areas only. Enter the standard numbers from the CBAHI edition in use; they are not pre-filled to avoid wrong references. */
+const CBAHI_AREAS=[
+  {k:"program",t:"IPC program, committee and qualified IPC staff",ev:()=>`${S.users.filter(u=>u.role==="team").length} team members on the platform`,link:"users"},
+  {k:"risk",t:"Annual IPC risk assessment and plan",ev:()=>{const r=S.risk.find(x=>x.year===thisYear());return r?`${thisYear()} assessment: ${r.items.filter(riskScore).length} risks scored, ${(r.plan||[]).length} goals`:"No assessment this year";},link:"risk"},
+  {k:"surv",t:"Surveillance of device-associated infections and SSI",ev:()=>{const n=S.devices.filter(d=>!d.removed).length;return `${n} active devices tracked, ${S.events.filter(e=>e.status==="Confirmed HAI").length} confirmed HAI on record`;},link:"bdash"},
+  {k:"bundles",t:"Bundle compliance for central lines, catheters, ventilators and surgery",ev:()=>{const c=S.devices.flatMap(d=>d.checks).filter(c=>c.date>=addDays(today(),-30));return `${c.length} daily checks in the last 30 days, ${pct(c.filter(checkOk).length,c.length)} compliant`;},link:"bdash"},
+  {k:"mdro",t:"MDRO surveillance and isolation",ev:()=>`${S.mdro.filter(m=>m.date>=addDays(today(),-90)).length} MDRO cases in 90 days, ${S.iso.filter(i=>!i.end).length} patients on isolation now`,link:"mdro"},
+  {k:"hh",t:"Hand hygiene program and monitoring",ev:()=>{const l=S.audits.filter(a=>a.type==="hh"&&a.date>=addDays(today(),-30));return `${l.length} observations in 30 days, ${pct(l.filter(a=>a.compliant).length,l.length)} compliant`;},link:"dash"},
+  {k:"ppe",t:"PPE and standard and transmission-based precautions",ev:()=>{const l=S.audits.filter(a=>a.type==="ppe"&&a.date>=addDays(today(),-30));return `${l.length} PPE audits in 30 days`;},link:"dash"},
+  {k:"env",t:"Environmental cleaning and disinfection",ev:()=>{const l=S.audits.filter(a=>a.type==="env"&&a.date>=addDays(today(),-30));return `${l.length} cleaning audits in 30 days`;},link:"dash"},
+  {k:"waste",t:"Medical waste and sharps management",ev:()=>{const l=S.audits.filter(a=>a.type==="waste"&&a.date>=addDays(today(),-30));return `${l.length} waste audits in 30 days`;},link:"dash"},
+  {k:"occ",t:"Occupational health: exposures, immunization and fit testing",ev:()=>`${S.expo.filter(x=>x.date.startsWith(thisYear())).length} exposures this year, ${S.fit.filter(x=>x.result==="Pass"&&addDays(x.date,365)>=today()).length} valid fit tests`,link:"staffhealth"},
+  {k:"edu",t:"Staff education and training",ev:()=>`${S.train.filter(x=>x.date.startsWith(thisYear())).length} sessions this year`,link:"training"},
+  {k:"outbreak",t:"Outbreak detection and management",ev:()=>`${S.outbreaks.length} investigations on record, cluster alerts active`,link:"outbreaks"},
+  {k:"icra",t:"Construction and renovation (ICRA)",ev:()=>"Recorded in the risk assessment",link:"risk"},
+  {k:"report",t:"Reporting to the IPC committee and leadership, feedback to units",ev:()=>"Monthly report and unit scorecards available",link:"report"},
+  {k:"actions",t:"Corrective actions and re-audit",ev:()=>`${S.actions.filter(a=>a.status!=="Done").length} open, ${S.actions.filter(a=>a.status==="Done").length} closed`,link:"actions"}];
+function vCbahi(){
+  const c=S.cbahi||{},st=["Met","Partially met","Not met"],cnt=s=>CBAHI_AREAS.filter(a=>c[a.k]?.status===s).length;
+  return `<div class="wrap wide">${crumb("CBAHI readiness")}
+    <h1>CBAHI readiness</h1>
+    <p class="lead">Each infection control requirement area with the evidence the platform already holds. Add the standard numbers from the CBAHI edition you are surveyed against, rate each area, and note what is still missing.</p>
+    <div class="stats"><div class="stat" style="--c:var(--go)"><span>Met</span><b>${cnt("Met")}</b></div><div class="stat" style="--c:#C98A00"><span>Partially met</span><b>${cnt("Partially met")}</b></div>
+      <div class="stat" style="--c:var(--stop)"><span>Not met</span><b>${cnt("Not met")}</b></div><div class="stat" style="--c:var(--muted)"><span>Not rated</span><b>${CBAHI_AREAS.length-cnt("Met")-cnt("Partially met")-cnt("Not met")}</b></div></div>
+    <div class="scroll" style="margin-top:14px"><table class="bench"><thead><tr><th>Requirement area</th><th>Standard no.</th><th>Evidence in the platform</th><th>Status</th><th>Gaps and notes</th></tr></thead><tbody>
+    ${CBAHI_AREAS.map(a=>{const x=c[a.k]||{};return `<tr><th scope="row">${a.t}</th><td><input type="text" data-cb="${a.k}|ref" value="${esc(x.ref||"")}" style="min-width:80px" placeholder="e.g. IPC.4"></td>
+      <td><small>${esc(a.ev())}</small><br><button class="link-btn" data-a="nav" data-v="${a.link}">Open</button></td>
+      <td><select data-cb="${a.k}|status"><option value="">Not rated</option>${opt(st,x.status)}</select></td>
+      <td><textarea data-cb="${a.k}|note" rows="2" style="min-width:180px">${esc(x.note||"")}</textarea></td></tr>`;}).join("")}</tbody></table></div>
+    <div class="row" style="margin-top:14px"><div style="flex:0 0 auto"><button class="btn" data-a="savecbahi">Save</button></div><div style="flex:0 0 auto"><button class="btn ghost" data-a="print">Print</button></div></div>
+  </div>`;
+}
+
+/* ================= 3. Statistical process control ================= */
+/* u-chart for infection rates (per 1,000 device or patient days), p-chart for compliance. Signals: a point outside the 3-sigma limits, or 8 in a row on one side of the centre line. */
+function spcSeries(kind,key,unit){
+  const ms=monthsBack(12),pts=[];
+  for(const m of ms){const pS=m+"-01",pE=monthEnd(m);
+    if(kind==="p"){const l=S.audits.filter(a=>a.type===key&&monthKey(a.date)===m&&(unit==="all"||deptName(a)===unit));pts.push({m,x:l.filter(a=>a.compliant).length,n:l.length});}
+    else if(key==="mdro"){const s2=mdroStats(unit,m);pts.push({m,x:s2.ho,n:s2.pd/1000});}
+    else{const r=devMetrics(pS,pE,unit).rows.find(z=>z.k===key);pts.push({m,x:r.hai,n:r.dd/1000});}}
+  const N=pts.reduce((t,p)=>t+p.n,0),X=pts.reduce((t,p)=>t+p.x,0),c=N?X/N:0;
+  pts.forEach(p=>{if(!p.n){p.v=null;return;}p.v=p.x/p.n;const sd=kind==="p"?Math.sqrt(c*(1-c)/p.n):Math.sqrt(c/p.n);p.ucl=kind==="p"?Math.min(1,c+3*sd):c+3*sd;p.lcl=Math.max(0,c-3*sd);
+    p.out=p.v>p.ucl||p.v<p.lcl;});
+  let run=0,side=0;pts.forEach(p=>{if(p.v===null){run=0;return;}const sd2=p.v>c?1:p.v<c?-1:0;if(sd2&&sd2===side)run++;else{run=sd2?1:0;side=sd2;}p.shift=run>=8;});
+  return{pts,c,kind,scale:kind==="p"?100:1};
+}
+function spcSVG(sr,title,unitLabel){
+  const W=680,H=250,L=48,R=12,T=24,B=40,pts=sr.pts,sc=sr.scale,vals=pts.flatMap(p=>p.v===null?[]:[p.v,p.ucl]).map(v=>v*sc);
+  const max=Math.max(1,...vals,sr.c*sc)*1.1,x=i=>L+(W-L-R)*(i+.5)/pts.length,y=v=>T+(H-T-B)*(1-v*sc/max);
+  const path=k=>pts.map((p,i)=>p.v===null?"":`${x(i)},${y(p[k])}`).filter(Boolean).join(" ");
+  const sig=pts.filter(p=>p.out||p.shift).length;
+  return `<figure class="spc"><figcaption><b>${esc(title)}</b> <small>${unitLabel}. Centre ${(sr.c*sc).toFixed(sr.kind==="p"?0:2)}${sr.kind==="p"?"%":""}.
+      ${sig?`<span class="tag no">${sig} ${sig===1?"signal":"signals"}</span>`:`<span class="tag ok">In control</span>`}</small></figcaption>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)} control chart">
+      ${[0,.25,.5,.75,1].map(f=>`<line x1="${L}" x2="${W-R}" y1="${T+(H-T-B)*f}" y2="${T+(H-T-B)*f}" stroke="#E3ECEC"/><text x="${L-6}" y="${T+(H-T-B)*f+4}" text-anchor="end" font-size="11" fill="#4F6670">${(max*(1-f)).toFixed(sr.kind==="p"?0:1)}</text>`).join("")}
+      <polyline points="${path("ucl")}" fill="none" stroke="#B42318" stroke-dasharray="5 4" stroke-width="1.5"/>
+      <polyline points="${path("lcl")}" fill="none" stroke="#B42318" stroke-dasharray="5 4" stroke-width="1.5"/>
+      <line x1="${L}" x2="${W-R}" y1="${y(sr.c)}" y2="${y(sr.c)}" stroke="#245E68" stroke-width="1.5"/>
+      <polyline points="${path("v")}" fill="none" stroke="#2E3E47" stroke-width="2"/>
+      ${pts.map((p,i)=>p.v===null?"":`<circle cx="${x(i)}" cy="${y(p.v)}" r="${p.out||p.shift?6:4}" fill="${p.out||p.shift?"#B42318":"#2E3E47"}"><title>${monthName(p.m)}: ${(p.v*sc).toFixed(2)}${p.out?", outside the limits":p.shift?", part of a run of 8":""}</title></circle>`).join("")}
+      ${pts.map((p,i)=>`<text x="${x(i)}" y="${H-B+16}" text-anchor="middle" font-size="11" fill="#4F6670">${new Date(p.m+"-01T00:00:00Z").toLocaleString("en",{month:"short",timeZone:"UTC"})}</text>`).join("")}
+    </svg></figure>`;
+}
+function vSpc(){
+  const f=S.spcF||(S.spcF={m:"hh",unit:"all"});
+  const opts=[...Object.entries(MODULES).map(([k,m])=>[k,`${m.name} compliance`]),...Object.entries(DEV).map(([k,m])=>[k,`${m.hai} rate`]),["mdro","Hospital-onset MDRO rate"]];
+  const kind=MODULES[f.m]?"p":"u",units=kind==="p"?["all",...DEPARTMENTS]:["all",...(f.m==="mdro"?INPATIENT:BUNDLE_UNITS)];
+  if(!units.includes(f.unit))f.unit="all";
+  const sr=spcSeries(kind,f.m,f.unit),lab=opts.find(o=>o[0]===f.m)[1];
+  return `<div class="wrap wide">${crumb("Control charts")}
+    <h1>Control charts (SPC)</h1>
+    <p class="lead">Shows whether a change is real or ordinary month-to-month variation. A red point is a signal: outside the control limits, or part of 8 months in a row on one side of the centre line. Points inside the limits are normal variation, even if they look higher.</p>
+    <div class="row" style="align-items:end"><div><label class="f" for="spm">Measure</label><select id="spm" data-spc="m">${opts.map(([v,l])=>`<option value="${v}" ${v===f.m?"selected":""}>${l}</option>`).join("")}</select></div>
+      <div><label class="f" for="spu">${kind==="p"?"Department":"Unit"}</label><select id="spu" data-spc="unit">${units.map(u=>`<option value="${u}" ${u===f.unit?"selected":""}>${u==="all"?"All":u}</option>`).join("")}</select></div></div>
+    <div class="card" style="margin-top:14px">${spcSVG(sr,lab+(f.unit==="all"?"":`, ${f.unit}`),kind==="p"?"p-chart, percent compliant":"u-chart, per 1,000 "+(f.m==="mdro"?"patient days":"device days"))}</div>
+    <div class="scroll" style="margin-top:12px"><table><thead><tr><th>Month</th><th>${kind==="p"?"Compliant":"Cases"}</th><th>${kind==="p"?"Observed":"Days (thousands)"}</th><th>Value</th><th>Limits</th><th>Signal</th></tr></thead><tbody>
+      ${sr.pts.map(p=>`<tr><td>${monthName(p.m)}</td><td class="c">${p.x}</td><td class="c">${kind==="p"?p.n:p.n.toFixed(2)}</td><td class="c">${p.v===null?"–":(p.v*sr.scale).toFixed(2)}</td>
+        <td class="c">${p.v===null?"–":`${(p.lcl*sr.scale).toFixed(1)} to ${(p.ucl*sr.scale).toFixed(1)}`}</td><td class="c">${p.out?`<span class="tag no">Outside limits</span>`:p.shift?`<span class="tag no">Run of 8</span>`:"–"}</td></tr>`).join("")}</tbody></table></div>
+  </div>`;
+}
+
+/* ================= 5. Outbreak management ================= */
+const OB_MEASURES=["Contact precautions for all cases","Cohorting of cases and cohort nursing","Enhanced cleaning and disinfection","Screening of contacts","Hand hygiene audits increased",
+  "Staff education session","Admissions restricted to the unit","Dedicated equipment","Antimicrobial review with stewardship","Reported to public health (MOH, HESN)"];
+function epiCurve(cases){
+  if(!cases.length)return `<p class="hint">No cases yet.</p>`;
+  const d0=cases.map(c=>c.date).sort()[0],d1=[...cases.map(c=>c.date),today()].sort().at(-1),days=Math.min(120,dayDiff(d0,d1)+1),W=680,H=200,L=30,B=34,bw=(W-L-10)/days;
+  const by={};cases.forEach(c=>{by[c.date]=(by[c.date]||0)+1;});const max=Math.max(...Object.values(by),1);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Epidemic curve">${[...Array(days)].map((_,i)=>{const d=addDays(d0,i),n=by[d]||0,h=(H-B-10)*n/max;
+    return `${n?`<rect x="${L+i*bw+1}" y="${H-B-h}" width="${Math.max(2,bw-2)}" height="${h}" fill="#B42318"><title>${fmt(d)}: ${n}</title></rect>`:""}${i%Math.ceil(days/8)===0?`<text x="${L+i*bw}" y="${H-B+16}" font-size="10" fill="#4F6670">${fmt(d).replace(/ \d{4}$/,"")}</text>`:""}`;}).join("")}
+    <line x1="${L}" x2="${W-10}" y1="${H-B}" y2="${H-B}" stroke="#2E3E47"/><text x="${L-6}" y="16" text-anchor="end" font-size="10" fill="#4F6670">${max}</text></svg>`;
+}
+function vOutbreaks(){
+  const cl=clusters(addDays(today(),-60),today());
+  return `<div class="wrap wide">${crumb("Outbreaks")}
+    <h1>Outbreaks</h1>
+    <p class="lead">Open an investigation from a cluster alert or start one directly. Each investigation keeps its case definition, line list, epidemic curve and control measures.</p>
+    ${cl.length?`<h2>Clusters detected in the last 60 days</h2><div class="scroll"><table><tbody>${cl.map(c=>`<tr><td>${esc(c.orgTxt)} in <b>${esc(c.unit)}</b>: ${c.n} patients, ${fmt(c.first)} to ${fmt(c.last)}</td>
+      <td style="white-space:nowrap">${S.outbreaks.some(o=>o.clusterKey===c.key)?`<span class="tag mid">Investigation open</span>`:`<button class="btn small" data-a="obfromcl" data-v="${esc(c.key)}">Open investigation</button>`}</td></tr>`).join("")}</tbody></table></div>`:""}
+    <h2>Investigations</h2>
+    ${S.outbreaks.length?`<div class="scroll"><table><thead><tr><th>Name</th><th>Unit</th><th>Started</th><th>Cases</th><th>Status</th></tr></thead><tbody>
+      ${S.outbreaks.slice().sort((a,b)=>b.start.localeCompare(a.start)).map(o=>`<tr><td><button class="link-btn" data-a="openob" data-id="${o.id}">${esc(o.name)}</button></td><td>${esc(o.unit)}</td><td>${fmt(o.start)}</td><td class="c">${o.cases.length}</td>
+        <td>${o.status==="Closed"?`<span class="tag ok">Closed ${fmt(o.closed)}</span>`:`<span class="tag no">Active</span>`}</td></tr>`).join("")}</tbody></table></div>`:`<div class="card">No investigations yet.</div>`}
+    <div style="margin-top:14px"><button class="btn ghost" data-a="newob">Start an investigation</button></div></div>`;
+}
+function vOutbreak(){
+  const o=S.outbreaks.find(x=>x.id===S.obId);if(!o)return vOutbreaks();
+  const f=S.form||{};
+  return `<div class="wrap wide">${crumb(o.name,`<span>/</span><button data-a="nav" data-v="outbreaks">Outbreaks</button>`)}
+    <h1>${esc(o.name)}</h1>
+    <p class="lead">${esc(o.unit)}. Started ${fmt(o.start)}. ${o.status==="Closed"?`Closed ${fmt(o.closed)}.`:`<b style="color:var(--stop)">Active.</b>`} Organism: ${esc(o.organism||"not set")}.</p>
+    <div class="card"><label class="f" style="margin-top:0" for="obd">Case definition</label><textarea id="obd" data-obf="definition">${esc(o.definition||"")}</textarea>
+      <div style="margin-top:8px"><button class="btn ghost small" data-a="obsavedef">Save case definition</button></div></div>
+    <h2>Epidemic curve</h2><div class="card">${epiCurve(o.cases)}</div>
+    <h2>Line list (${o.cases.length})</h2>
+    ${o.cases.length?`<div class="scroll"><table><thead><tr><th>Date</th><th>MRN</th><th>Unit</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>
+      ${o.cases.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(c=>`<tr><td>${fmt(c.date)}</td><td>${esc(c.mrn)}</td><td>${esc(c.unit)}</td><td>${esc(c.status)}</td><td>${esc(c.note||"")}</td><td><button class="link-btn" style="color:var(--stop)" data-a="obcasedel" data-id="${c.id}">Remove</button></td></tr>`).join("")}</tbody></table></div>`:""}
+    <div class="card" style="margin-top:10px"><div class="row"><div><label class="f" for="oc1">Date</label><input type="date" id="oc1" max="${today()}" value="${today()}"></div><div><label class="f" for="oc2">MRN</label><input type="text" id="oc2" inputmode="numeric"></div>
+      <div><label class="f" for="oc3">Unit</label><select id="oc3">${opt(INPATIENT,o.unit)}</select></div><div><label class="f" for="oc4">Status</label><select id="oc4">${opt(["Confirmed","Probable","Colonized"],"Confirmed")}</select></div></div>
+      <label class="f" for="oc5">Note</label><input type="text" id="oc5"><div style="margin-top:10px"><button class="btn ghost" data-a="obcaseadd">Add case</button></div></div>
+    <h2>Control measures</h2>
+    <div class="card">${OB_MEASURES.map(m=>{const x=(o.measures||{})[m];return `<label class="crit"><input type="checkbox" data-obm="${esc(m)}" ${x?"checked":""}> <span>${m}${x?` <small style="color:var(--muted)">since ${fmt(x)}</small>`:""}</span></label>`;}).join("")}</div>
+    <h2>Log</h2>
+    ${(o.log||[]).length?`<ul>${o.log.slice().reverse().map(l=>`<li>${fmt(l.date)}, ${esc(l.by)}: ${esc(l.text)}</li>`).join("")}</ul>`:""}
+    <div class="row" style="align-items:end"><div><label class="f" for="ol1">Add to the log</label><input type="text" id="ol1" placeholder="e.g. Meeting with ICU head nurse; screening started"></div><div style="flex:0 0 auto"><button class="btn ghost" data-a="oblogadd">Add</button></div></div>
+    <div class="row" style="margin-top:18px">${o.status==="Closed"?`<div style="flex:0 0 auto"><button class="btn ghost" data-a="obreopen">Reopen</button></div>`:`<div style="flex:0 0 auto"><button class="btn" data-a="obclose">Close the outbreak</button></div>`}
+      <div style="flex:0 0 auto"><button class="btn ghost" data-a="print">Print</button></div></div>
+    <p class="hint">Close an outbreak after two incubation periods with no new cases, or as your outbreak policy states.</p></div>`;
+}
+
+/* ================= 6. Isolation board ================= */
+const ISO_REASONS=["MRSA","VRE","CRE","CRAB","CRPA","ESBL","C. difficile","Candida auris","Tuberculosis (suspected or confirmed)","Influenza","COVID-19","MERS-CoV (suspected or confirmed)","Varicella or measles","Scabies","Other"];
+const ISO_CHECKS=[["sign","Precaution sign on the door"],["ppe","PPE available at the door"],["room","Single room or cohort"],["equip","Dedicated equipment"]];
+const isoOk=x=>ISO_CHECKS.every(([k])=>x[k]==="Yes");
+function vIsoBoard(){
+  const act=S.iso.filter(x=>!x.end),units=[...new Set(act.map(x=>x.unit))].sort();
+  const need=S.mdro.filter(m=>m.date>=addDays(today(),-14)&&!S.iso.some(x=>x.mdroId===m.id));
+  return `<div class="wrap wide">${crumb("Isolation board")}
+    <h1>Isolation board</h1>
+    <p class="lead">Every patient on transmission-based precautions now, with the checks for each room. Precautions stay until you end them.</p>
+    <div class="stats"><div class="stat" style="--c:var(--primary)"><span>On isolation now</span><b>${act.length}</b></div>
+      <div class="stat" style="--c:var(--go)"><span>All room checks met</span><b>${pct(act.filter(isoOk).length,act.length)}</b></div>
+      <div class="stat" style="--c:#C98A00"><span>Recent MDRO cases without isolation recorded</span><b>${need.length}</b></div></div>
+    ${need.length?`<h2>MDRO cases from the last 14 days</h2><div class="scroll"><table><tbody>${need.map(m=>`<tr><td>${fmt(m.date)}</td><td>${esc(m.unit)}</td><td>MRN ${esc(m.mrn||"–")}</td><td>${esc(m.mdroType)} ${esc(m.organism)}</td>
+      <td><button class="btn small" data-a="isofrommdro" data-id="${m.id}">Start isolation</button></td></tr>`).join("")}</tbody></table></div>`:""}
+    <div style="margin-top:14px"><button class="btn" data-a="newiso">Add a patient to isolation</button></div>
+    ${units.map(u=>`<h2>${esc(u)}</h2><div class="isogrid">${act.filter(x=>x.unit===u).sort((a,b)=>String(a.bed).localeCompare(String(b.bed),undefined,{numeric:true})).map(x=>`
+      <div class="card iso"><div class="iso-h"><b>Bed ${esc(x.bed)}</b><span>${(x.precautions||[]).map(p=>`<span class="tag ${p==="Airborne"?"no":"mid"}">${p}</span>`).join(" ")}</span></div>
+        <p class="meta">${esc(x.reason)}${x.mrn?`, MRN ${esc(x.mrn)}`:""}. Since ${fmt(x.start)} (day ${dayDiff(x.start,today())+1}).</p>
+        <p class="meta">${ISO_CHECKS.map(([k,l])=>`${x[k]==="Yes"?"✓":"✗"} ${l}`).join("<br>")}</p>
+        <div class="row"><div style="flex:0 0 auto"><button class="btn ghost small" data-a="editiso" data-id="${x.id}">Update</button></div><div style="flex:0 0 auto"><button class="btn ghost small" data-a="endiso" data-id="${x.id}">End isolation</button></div></div></div>`).join("")}</div>`).join("")||`<div class="card" style="margin-top:12px">No patients on isolation.</div>`}
+  </div>`;
+}
+function vIso(){
+  const f=S.form,L=LOC[f.unit];
+  return `<div class="wrap">${crumb("Isolation",`<span>/</span><button data-a="nav" data-v="isoboard">Isolation board</button>`)}
+    <h1>${f.id?"Update isolation":"Start isolation"}</h1>
+    <div class="row"><div>${selRow("is1","Unit","unit",INPATIENT,f)}</div><div>${inputRow("is2","Bed or room","bed",f)}</div><div>${inputRow("is3","MRN <small>(optional)</small>","mrn",f,"text",'inputmode="numeric"')}</div></div>
+    <label class="f">Precautions</label><div class="chips">${["Contact","Droplet","Airborne","Contact plus (C. difficile)"].map(p=>`<button class="chip" aria-pressed="${(f.precautions||[]).includes(p)}" data-a="isoprec" data-v="${p}">${p}</button>`).join("")}</div>
+    ${selRow("is4","Reason","reason",ISO_REASONS,f)}
+    ${inputRow("is5","Start date","start",f,"date",`max="${today()}"`)}
+    ${ISO_CHECKS.map(([k,l])=>chipsBlock(l,k,["Yes","No"],f)).join("")}
+    ${noteBlock(f)}
+    ${errHtml()}<div style="margin-top:16px"><button class="btn block" data-a="saveiso">Save</button></div></div>`;
+}
+async function saveIso(){const f=S.form;
+  if(!f.unit||!String(f.bed||"").trim())return fail("Enter the unit and bed.");if(!(f.precautions||[]).length)return fail("Select the precautions.");if(!f.reason)return fail("Select the reason.");
+  if(!f.start)return fail("Enter the start date.");
+  await saveRec("ipc-iso",S.iso,{...f,id:f.id||uid(),bed:String(f.bed).trim(),by:f.by||S.user.name});go("isoboard");toast(isoOk(f)?"Saved":"Saved: some room checks are not met",!isoOk(f));}
+
+/* ================= 7. Occupational exposures and N95 fit testing ================= */
+const EXPO_TYPES=["Needlestick or sharps injury","Mucous membrane splash","Non-intact skin contact","Human bite","Respiratory exposure (TB, MERS, measles)"];
+const EXPO_FU=[["base","Baseline tests",0],["w6","6 weeks",42],["m3","3 months",90],["m6","6 months",180]];
+const fuDue=x=>EXPO_FU.filter(([k,,d])=>!x.fu?.[k]&&addDays(x.date,d)<=today()).map(([,l])=>l);
+const fitValid=x=>x.result==="Pass"&&addDays(x.date,365)>=today();
+function vStaffHealth(){
+  const tab=S.shTab||"expo",y=thisYear(),ex=S.expo.filter(x=>x.date.startsWith(y)).sort((a,b)=>b.date.localeCompare(a.date));
+  const latest={};S.fit.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{latest[(x.staffId||x.staffName).toLowerCase()]=x;});const fits=Object.values(latest);
+  const soon=fits.filter(x=>x.result==="Pass"&&addDays(x.date,365)>=today()&&addDays(x.date,335)<=today()),expired=fits.filter(x=>!fitValid(x));
+  return `<div class="wrap wide">${crumb("Occupational health")}
+    <h1>Occupational health</h1>
+    <div class="chips subnav">${[["expo","Exposures"],["fit","N95 fit testing"]].map(([v,l])=>`<button class="chip" aria-pressed="${tab===v}" data-a="shtab" data-v="${v}">${l}</button>`).join("")}</div>
+    ${tab==="expo"?`<div class="stats" style="margin-top:14px">
+      <div class="stat" style="--c:var(--stop)"><span>Exposures this year</span><b>${ex.length}</b><small>${ex.filter(x=>x.type===EXPO_TYPES[0]).length} sharps injuries</small></div>
+      <div class="stat" style="--c:#C98A00"><span>Follow-up overdue</span><b>${S.expo.filter(x=>fuDue(x).length&&!x.closed).length}</b></div>
+      <div class="stat" style="--c:var(--go)"><span>PEP started within 2 hours</span><b>${pct(ex.filter(x=>x.pep2h==="Yes").length,ex.filter(x=>x.pep==="Yes").length)}</b><small>of exposures given PEP</small></div></div>
+      <div style="margin-top:12px"><button class="btn" data-a="newexpo">Record an exposure</button></div>
+      ${ex.length?`<div class="scroll" style="margin-top:12px"><table><thead><tr><th>Date</th><th>Staff</th><th>Type</th><th>Department</th><th>Source</th><th>Follow-up</th><th></th></tr></thead><tbody>
+        ${ex.map(x=>`<tr><td style="white-space:nowrap">${fmt(x.date)}</td><td>${esc(x.staffName)}<br><small>${esc(x.category||"")}</small></td><td>${esc(x.type)}</td><td>${esc(x.dept)}</td><td>${esc(x.source||"–")}</td>
+          <td>${x.closed?`<span class="tag ok">Completed</span>`:fuDue(x).length?`<span class="tag no">Due: ${fuDue(x).join(", ")}</span>`:`<span class="tag mid">On schedule</span>`}</td>
+          <td><button class="link-btn" data-a="editexpo" data-id="${x.id}">Open</button></td></tr>`).join("")}</tbody></table></div>`:`<div class="card" style="margin-top:12px">No exposures recorded this year.</div>`}`
+    :`<div class="stats" style="margin-top:14px">
+      <div class="stat" style="--c:var(--go)"><span>Valid fit tests</span><b>${fits.filter(fitValid).length}</b><small>staff tested in the last 12 months</small></div>
+      <div class="stat" style="--c:#C98A00"><span>Expiring within 30 days</span><b>${soon.length}</b></div>
+      <div class="stat" style="--c:var(--stop)"><span>Expired or failed</span><b>${expired.length}</b></div></div>
+      <div style="margin-top:12px"><button class="btn" data-a="newfit">Record a fit test</button></div>
+      ${fits.length?`<div class="scroll" style="margin-top:12px"><table><thead><tr><th>Staff</th><th>Department</th><th>Mask model and size</th><th>Last test</th><th>Valid until</th></tr></thead><tbody>
+        ${fits.sort((a,b)=>a.date.localeCompare(b.date)).map(x=>`<tr><td>${esc(x.staffName)}${x.staffId?`<br><small>${esc(x.staffId)}</small>`:""}</td><td>${esc(x.dept)}</td><td>${esc(x.model)} ${esc(x.size||"")}</td>
+          <td>${fmt(x.date)} ${okTag(x.result==="Pass","Pass","Fail")}</td><td>${x.result==="Pass"?`${fmt(addDays(x.date,365))}${!fitValid(x)?` <span class="tag no">Expired</span>`:addDays(x.date,335)<=today()?` <span class="tag mid">Soon</span>`:""}`:"Retest needed"}</td></tr>`).join("")}</tbody></table></div>`:""}`}
+  </div>`;
+}
+function vExpo(){
+  const f=S.form;f.fu=f.fu||{};
+  return `<div class="wrap">${crumb("Exposure",`<span>/</span><button data-a="nav" data-v="staffhealth">Occupational health</button>`)}
+    <h1>${f.id?"Exposure follow-up":"Record an exposure"}</h1>
+    <div class="row"><div>${inputRow("ex1","Date of exposure","date",f,"date",`max="${today()}"`)}</div><div>${inputRow("ex2","Staff name","staffName",f)}</div><div>${inputRow("ex3","Staff ID","staffId",f)}</div></div>
+    <div class="row"><div>${selRow("ex4","Department","dept",DEPARTMENTS,f)}</div><div>${selRow("ex5","Staff category","category",STAFF,f)}</div></div>
+    ${chipsBlock("Type of exposure","type",EXPO_TYPES,f)}
+    ${inputRow("ex6","Device or activity <small>(optional)</small>","device",f,"text",'placeholder="e.g. Hollow-bore needle during recapping"')}
+    ${inputRow("ex7","Source patient <small>(MRN or unknown)</small>","source",f)}
+    ${chipsBlock("Post-exposure prophylaxis given","pep",["Yes","No","Not indicated"],f)}
+    ${f.pep==="Yes"?chipsBlock("PEP started within 2 hours","pep2h",["Yes","No"],f):""}
+    ${chipsBlock("Reported to occupational health","reported",["Yes","No"],f)}
+    <label class="f">Follow-up tests</label>
+    <div class="card">${EXPO_FU.map(([k,l,d])=>`<div class="row" style="align-items:center"><div>${l}<br><small class="hint">due ${f.date?fmt(addDays(f.date,d)):"–"}</small></div>
+      <div><input type="date" data-fu="${k}" value="${f.fu[k]||""}" max="${today()}" aria-label="${l} done on"></div></div>`).join("")}</div>
+    ${chipsBlock("Follow-up completed","closed",["Yes"],f)}
+    ${noteBlock(f)}
+    <p class="hint">This record holds staff health information. Only the Infection Control Team can open it.</p>
+    ${errHtml()}<div style="margin-top:16px"><button class="btn block" data-a="saveexpo">Save</button></div></div>`;
+}
+async function saveExpo(){const f=S.form;
+  if(!f.date||!f.staffName.trim())return fail("Enter the date and the staff member.");if(!f.dept||!f.type)return fail("Select the department and the type of exposure.");
+  await saveRec("ipc-expo",S.expo,{...f,id:f.id||uid(),staffName:f.staffName.trim(),by:f.by||S.user.name});S.shTab="expo";go("staffhealth");toast("Exposure saved");}
+function vFit(){
+  const f=S.form;
+  return `<div class="wrap">${crumb("Fit test",`<span>/</span><button data-a="nav" data-v="staffhealth">Occupational health</button>`)}
+    <h1>Record an N95 fit test</h1>
+    <div class="row"><div>${inputRow("ft1","Staff name","staffName",f)}</div><div>${inputRow("ft2","Staff ID","staffId",f)}</div></div>
+    <div class="row"><div>${selRow("ft3","Department","dept",DEPARTMENTS,f)}</div><div>${inputRow("ft4","Date","date",f,"date",`max="${today()}"`)}</div></div>
+    <div class="row"><div>${inputRow("ft5","Mask model","model",f,"text",'placeholder="e.g. 3M 1860"')}</div><div>${inputRow("ft6","Size","size",f)}</div></div>
+    ${chipsBlock("Method","method",["Qualitative","Quantitative"],f)}
+    ${chipsBlock("Result","result",["Pass","Fail"],f)}
+    ${errHtml()}<div style="margin-top:16px"><button class="btn block" data-a="savefit">Save</button></div></div>`;
+}
+async function saveFit(){const f=S.form;
+  if(!f.staffName.trim()||!f.date||!f.model.trim()||!f.result)return fail("Enter the staff member, date, mask model and result.");
+  await saveRec("ipc-fit",S.fit,{...f,id:uid(),by:S.user.name});S.shTab="fit";go("staffhealth");toast(f.result==="Pass"?"Fit test saved, valid for 12 months":"Saved: retest with another model or size",f.result!=="Pass");}
+
+/* ================= 8. Training ================= */
+const TOPICS=["Hand hygiene","PPE donning and doffing","Standard and transmission-based precautions","Device bundles (CLABSI, CAUTI, VAE)","Surgical site infection prevention",
+  "Environmental cleaning","Waste and sharps safety","Sterilization and endoscope reprocessing","Outbreak response","MDRO and isolation","Orientation for new staff","Other"];
+const attendeesOf=x=>String(x.attendees||"").split(/\n|,/).map(a=>a.trim()).filter(Boolean);
+function vTraining(){
+  const y=thisYear(),l=S.train.filter(x=>x.date.startsWith(y)).sort((a,b)=>b.date.localeCompare(a.date)),hc=S.settings.headcount||{};
+  const depts=[...new Set([...l.map(x=>x.dept),...Object.keys(hc)])].filter(Boolean).sort();
+  const uniq=d=>new Set(l.filter(x=>x.dept===d).flatMap(x=>attendeesOf(x).map(a=>a.toLowerCase()))).size;
+  return `<div class="wrap wide">${crumb("Training")}
+    <h1>Training</h1>
+    <p class="lead">Every infection control session with its attendees, and how much of each department's staff has been trained this year.</p>
+    <div class="stats"><div class="stat" style="--c:var(--primary)"><span>Sessions this year</span><b>${l.length}</b></div>
+      <div class="stat" style="--c:var(--primary)"><span>Attendances</span><b>${l.reduce((t,x)=>t+attendeesOf(x).length,0)}</b></div>
+      <div class="stat" style="--c:var(--primary)"><span>Training hours</span><b>${(l.reduce((t,x)=>t+(+x.minutes||0)*attendeesOf(x).length,0)/60).toFixed(0)}</b><small>staff hours</small></div></div>
+    <div style="margin-top:12px"><button class="btn" data-a="newtrain">Record a session</button></div>
+    <h2>Coverage by department, ${y}</h2>
+    ${depts.length?`<div class="scroll"><table class="bench"><thead><tr><th>Department</th><th>Staff trained</th><th>Headcount</th><th>Coverage</th></tr></thead><tbody>
+      ${depts.map(d=>{const u=uniq(d),h=+hc[d]||0;return `<tr><th scope="row">${esc(d)}</th><td class="c">${u}</td><td><input type="text" inputmode="numeric" data-hc="${esc(d)}" value="${h||""}" style="max-width:90px" aria-label="Headcount ${esc(d)}"></td>
+        <td class="c ${h?(u/h>=.8?"good":"bad"):"none"}">${h?Math.round(u/h*100)+"%":"–"}</td></tr>`;}).join("")}</tbody></table></div>
+      <div style="margin-top:8px"><button class="btn ghost small" data-a="savehc">Save headcounts</button></div>`:`<div class="card">No sessions yet.</div>`}
+    <h2>Sessions</h2>
+    ${l.length?`<div class="scroll"><table><thead><tr><th>Date</th><th>Topic</th><th>Department</th><th>Trainer</th><th>Attendees</th><th></th></tr></thead><tbody>
+      ${l.map(x=>`<tr><td style="white-space:nowrap">${fmt(x.date)}</td><td>${esc(x.topic)}</td><td>${esc(x.dept)}</td><td>${esc(x.trainer||"")}</td><td class="c">${attendeesOf(x).length}</td><td><button class="link-btn" data-a="edittrain" data-id="${x.id}">Open</button></td></tr>`).join("")}</tbody></table></div>`:""}
+  </div>`;
+}
+function vTrain(){
+  const f=S.form;
+  return `<div class="wrap">${crumb("Session",`<span>/</span><button data-a="nav" data-v="training">Training</button>`)}
+    <h1>${f.id?"Training session":"Record a training session"}</h1>
+    <div class="row"><div>${inputRow("tr1","Date","date",f,"date",`max="${today()}"`)}</div><div>${selRow("tr2","Department","dept",DEPARTMENTS,f)}</div><div>${inputRow("tr3","Duration (minutes)","minutes",f,"text",'inputmode="numeric"')}</div></div>
+    ${selRow("tr4","Topic","topic",TOPICS,f)}
+    ${inputRow("tr5","Trainer","trainer",f)}
+    <label class="f" for="tr6">Attendees <small>(one per line, or separated by commas; name or staff ID)</small></label><textarea id="tr6" data-bind="attendees" rows="6">${esc(f.attendees||"")}</textarea>
+    ${noteBlock(f)}
+    ${errHtml()}<div style="margin-top:16px"><button class="btn block" data-a="savetrain">Save</button></div></div>`;
+}
+async function saveTrain(){const f=S.form;
+  if(!f.date||!f.dept||!f.topic)return fail("Enter the date, department and topic.");if(!attendeesOf(f).length)return fail("List the attendees.");
+  await saveRec("ipc-train",S.train,{...f,id:f.id||uid(),by:f.by||S.user.name});go("training");toast(`Session saved with ${attendeesOf(f).length} attendees`);}
+
+/* ================= 9. Cumulative antibiogram ================= */
+/* CLSI M39: first isolate of each species per patient in the period; percent susceptible counts S only; flag fewer than 30 isolates. */
+const SIR=v=>{const t=String(v??"").trim().toUpperCase();return /^S/.test(t)?"S":/^I|^SDD/.test(t)?"I":/^R/.test(t)?"R":"";};
+function abgData(year,spec){
+  const rows=S.ast.filter(r=>r.date.startsWith(year)&&(spec==="all"||r.specimen===spec)).sort((a,b)=>a.date.localeCompare(b.date));
+  const seen=new Set(),first=[];rows.forEach(r=>{const k=(r.mrn||r.id)+"|"+orgKey(r.organism);if(!seen.has(k)){seen.add(k);first.push(r);}});
+  const orgs={};first.forEach(r=>{const o=r.organism.trim();(orgs[o]=orgs[o]||[]).push(r);});
+  const abx=[...new Set(first.flatMap(r=>Object.keys(r.res||{})))].sort();
+  return{orgs:Object.entries(orgs).sort((a,b)=>b[1].length-a[1].length),abx,n:first.length};
+}
+function vAbg(){
+  const y=S.abgY||thisYear(),sp=S.abgS||"all",years=[...new Set([thisYear(),...S.ast.map(r=>r.date.slice(0,4))])].sort().reverse(),specs=["all",...new Set(S.ast.map(r=>r.specimen).filter(Boolean))];
+  const d=abgData(y,sp);
+  return `<div class="wrap wide">${crumb("Antibiogram")}
+    <h1>Cumulative antibiogram</h1>
+    <p class="lead">Percent susceptible by organism and antibiotic, following CLSI M39: the first isolate of each organism per patient in the year, counting S only. Organisms with fewer than 30 isolates are marked, as their percentages are unreliable.</p>
+    <div class="row" style="align-items:end"><div><label class="f" for="ay">Year</label><select id="ay" data-abg="y">${opt(years,y)}</select></div>
+      <div><label class="f" for="as">Specimen</label><select id="as" data-abg="s">${specs.map(s2=>`<option value="${esc(s2)}" ${s2===sp?"selected":""}>${s2==="all"?"All specimens":esc(s2)}</option>`).join("")}</select></div>
+      <div style="flex:0 0 auto"><span class="btn file-btn">Import susceptibility results<input type="file" accept=".xlsx,.xls,.csv" data-astimp="1"></span></div>
+      <div style="flex:0 0 auto"><button class="btn ghost" data-a="asttemplate">Download a template</button></div></div>
+    ${d.n?`<div class="scroll" style="margin-top:14px"><table class="abg"><thead><tr><th>Organism</th><th>Isolates</th>${d.abx.map(a=>`<th><span>${esc(a)}</span></th>`).join("")}</tr></thead><tbody>
+      ${d.orgs.map(([o,l])=>`<tr><th scope="row">${esc(o)}${l.length<30?" *":""}</th><td class="c">${l.length}</td>${d.abx.map(a=>{const t=l.filter(r=>SIR(r.res[a]));if(!t.length)return `<td class="c none">–</td>`;
+        const v=Math.round(t.filter(r=>SIR(r.res[a])==="S").length/t.length*100);return `<td class="c ${v>=90?"good":v>=70?"mid":"bad"}" title="${t.length} tested">${v}</td>`;}).join("")}</tr>`).join("")}</tbody></table></div>
+      <p class="hint">${d.n} first isolates. Green 90% or more, amber 70 to 89%, red below 70%. * fewer than 30 isolates. Hover a cell to see how many were tested.</p>
+      <div class="row"><div style="flex:0 0 auto"><button class="btn ghost" data-a="print">Print</button></div><div style="flex:0 0 auto"><button class="btn ghost" data-a="abgcsv">Export to CSV</button></div></div>`
+      :`<div class="card" style="margin-top:14px">No susceptibility results for ${y}. Import the lab's AST export: one row per isolate, with date, MRN, specimen, organism, and one column per antibiotic holding S, I or R.</div>`}
+  </div>`;
+}
+async function astFile(file){
+  let rows;try{if(/\.csv$/i.test(file.name))rows=parseCSV(await file.text());else{await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+    const wb=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:""});}}
+  catch(e){toast("Could not read that file. Save it as CSV and try again.",true);return;}
+  rows=rows.map(r=>r.map(v=>typeof v==="string"?toEn(v):v)).filter(r=>r.some(v=>String(v).trim()));if(rows.length<2){toast("The file has no data rows",true);return;}
+  const h=rows[0].map(x=>String(x).trim()),find=re=>h.findIndex(x=>re.test(x));
+  const ci={date:find(/date/i),mrn:find(/mrn|file|medical|patient/i),spec:find(/specimen|sample|source/i),org:find(/organism|isolate|bacteri|pathogen/i)};
+  if(ci.date<0||ci.org<0){toast("The file needs a date column and an organism column",true);return;}
+  const fixed=new Set(Object.values(ci).filter(i=>i>-1)),abx=h.map((x,i)=>i).filter(i=>!fixed.has(i)&&rows.slice(1).some(r=>SIR(r[i])));
+  const keyOf=r=>`${r.date}|${r.mrn}|${orgKey(r.organism)}|${r.specimen}`,have=new Set(S.ast.map(keyOf));let added=0;
+  rows.slice(1).forEach(r=>{const x={id:uid(),date:toISO(r[ci.date]),mrn:ci.mrn>-1?String(r[ci.mrn]).trim():"",specimen:ci.spec>-1?String(r[ci.spec]).trim():"",organism:String(r[ci.org]).trim(),
+    res:Object.fromEntries(abx.map(i=>[h[i],SIR(r[i])]).filter(([,v])=>v))};if(!x.date||!x.organism||have.has(keyOf(x)))return;have.add(keyOf(x));S.ast.push(x);added++;});
+  await sset("ipc-ast",S.ast);render();toast(`Imported ${added} isolates with ${abx.length} antibiotics`);
+}
+function astTemplate(){const t="\uFEFFDate,MRN,Specimen,Organism,Amikacin,Ceftriaxone,Ciprofloxacin,Meropenem,Piperacillin-tazobactam\n05/10/2026,6001111,Blood,Klebsiella pneumoniae,S,R,R,S,I\n";
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([t],{type:"text/csv"}));a.download="antibiogram-template.csv";a.click();}
+function abgcsv(){const d=abgData(S.abgY||thisYear(),S.abgS||"all"),rows=[["Organism","Isolates",...d.abx],...d.orgs.map(([o,l])=>[o,l.length,...d.abx.map(a=>{const t=l.filter(r=>SIR(r.res[a]));return t.length?Math.round(t.filter(r=>SIR(r.res[a])==="S").length/t.length*100):"";})])];
+  const t="\uFEFF"+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([t],{type:"text/csv"}));a.download=`antibiogram-${S.abgY||thisYear()}.csv`;a.click();}
+
+/* ================= 10. Audit schedule ================= */
+/* Weeks start on Sunday. A link nurse sees only her own assignments and progress. */
+const weekStart=d=>{const x=new Date(d+"T00:00:00Z");return addDays(d,-x.getUTCDay());};
+const doneFor=a=>S.audits.filter(x=>x.type===a.module&&deptName(x)===a.dept&&x.date>=a.week&&x.date<addDays(a.week,7)&&(!a.assignee||x.auditorUser===a.assignee)).length;
+function myWeek(){
+  const w=weekStart(today()),mine=S.sched.filter(a=>a.week===w&&a.assignee===S.user.username);if(!mine.length)return "";
+  return `<div class="card" style="margin-bottom:14px"><b>Your audits this week</b>${mine.map(a=>{const d=doneFor(a);return `<p class="meta" style="margin:8px 0 0">${MODULES[a.module].name}, ${esc(a.dept)}: <b>${d} of ${a.target}</b> ${d>=a.target?`<span class="tag ok">Done</span>`:""}</p>`;}).join("")}</div>`;
+}
+function vSched(){
+  const w=S.schedW||weekStart(today()),list=S.sched.filter(a=>a.week===w),links=S.users.filter(u=>u.role!=="unit");
+  return `<div class="wrap wide">${crumb("Audit schedule")}
+    <h1>Audit schedule</h1>
+    <p class="lead">Assign the week's audits. Each person sees their own list and progress on their home page.</p>
+    <div class="row" style="align-items:end"><div style="flex:0 0 auto"><button class="btn ghost" data-a="schedw" data-v="${addDays(w,-7)}">‹ Previous week</button></div>
+      <div style="text-align:center"><b>Week of ${fmt(w)}</b></div><div style="flex:0 0 auto"><button class="btn ghost" data-a="schedw" data-v="${addDays(w,7)}">Next week ›</button></div></div>
+    ${list.length?`<div class="scroll" style="margin-top:12px"><table><thead><tr><th>Assigned to</th><th>Audit</th><th>Department</th><th>Done</th><th>Progress</th><th></th></tr></thead><tbody>
+      ${list.map(a=>{const d=doneFor(a),u=S.users.find(x=>x.username===a.assignee);return `<tr><td>${esc(u?.name||"Anyone")}</td><td>${MODULES[a.module].name}</td><td>${esc(a.dept)}</td><td class="c">${d} of ${a.target}</td>
+        <td class="c ${d>=a.target?"good":w<weekStart(today())?"bad":"none"}">${pct(Math.min(d,a.target),a.target)}</td><td><button class="link-btn" style="color:var(--stop)" data-a="scheddel" data-id="${a.id}">Remove</button></td></tr>`;}).join("")}</tbody></table></div>`
+      :`<div class="card" style="margin-top:12px">Nothing assigned this week.${S.sched.some(a=>a.week===addDays(w,-7))?` <button class="link-btn" data-a="schedcopy">Copy last week's assignments</button>`:""}</div>`}
+    <h2>Assign</h2>
+    <div class="card"><div class="row">
+      <div><label class="f" for="sa1">Person</label><select id="sa1"><option value="">Anyone</option>${links.map(u=>`<option value="${esc(u.username)}">${esc(u.name)}</option>`).join("")}</select></div>
+      <div><label class="f" for="sa2">Audit</label><select id="sa2">${Object.entries(MODULES).map(([k,m])=>`<option value="${k}">${m.name}</option>`).join("")}</select></div>
+      <div><label class="f" for="sa3">Department</label><select id="sa3">${opt(DEPARTMENTS.filter(d=>d!=="Other"))}</select></div>
+      <div><label class="f" for="sa4">Number</label><input type="text" inputmode="numeric" id="sa4" value="10"></div></div>
+      <div style="margin-top:12px"><button class="btn ghost" data-a="schedadd">Add to this week</button></div></div></div>`;
+}
+
+/* ================= 11. Unit scorecard ================= */
+function vScorecard(){
+  const depts=isTeam()?DEPARTMENTS.filter(d=>d!=="Other"):(S.user.perms?.depts||[]);
+  const d=depts.includes(S.scD)?S.scD:depts[0];if(!d)return `<div class="wrap">${crumb("Unit scorecard")}<div class="card">No department is linked to your account. Ask the Infection Control Team.</div></div>`;
+  const ms=monthsBack(3),m=ms[2],aud=S.audits.filter(a=>deptName(a)===d);
+  const cell=(k,mm)=>{const l=aud.filter(a=>a.type===k&&monthKey(a.date)===mm);const v=pctN(l.filter(a=>a.compliant).length,l.length);return v===null?`<td class="c none">–</td>`:`<td class="c ${v>=target(k)?"good":"bad"}">${v}%<small>n=${l.length}</small></td>`;};
+  const fails=Object.keys(CHECK).map(k=>{const l=aud.filter(a=>a.type===k&&a.date>=addDays(today(),-90));return CHECK[k].map(i=>{const ans=l.filter(a=>a.items?.[i.k]&&a.items[i.k]!=="na"),no=ans.filter(a=>a.items[i.k]==="n").length;return{t:i.t,no,n:ans.length,m:MODULES[k].name};});}).flat().filter(x=>x.no).sort((a,b)=>b.no/b.n-a.no/a.n).slice(0,5);
+  const onRound=BUNDLE_UNITS.includes(d),dm=onRound?devMetrics(addDays(today(),-90),addDays(today(),1),d):null,acts=S.actions.filter(a=>a.dept===d&&a.status!=="Done");
+  return `<div class="wrap wide">${crumb("Unit scorecard")}
+    <div class="row" style="align-items:end"><div><h1 style="margin:0">${esc(d)}</h1><p class="lead" style="margin:4px 0 0">Unit scorecard, ${monthName(ms[0])} to ${monthName(m)}</p></div>
+      ${depts.length>1?`<div style="flex:0 0 220px"><label class="f" for="scd">Department</label><select id="scd" data-scd="1">${opt(depts,d)}</select></div>`:""}
+      <div style="flex:0 0 auto"><button class="btn ghost" data-a="print">Print</button></div></div>
+    <h2>Audit compliance</h2>
+    <div class="scroll"><table><thead><tr><th>Audit</th>${ms.map(x=>`<th>${monthName(x)}</th>`).join("")}<th>Target</th></tr></thead><tbody>
+      ${Object.entries(MODULES).map(([k,mm])=>`<tr><th scope="row">${mm.name}</th>${ms.map(x=>cell(k,x)).join("")}<td class="c">${target(k)}%</td></tr>`).join("")}</tbody></table></div>
+    <h2>What to work on</h2>
+    ${fails.length?`<ol>${fails.map(x=>`<li>${esc(x.t)} <small>(${x.m})</small>: missed ${x.no} of ${x.n} times</li>`).join("")}</ol>`:`<p class="hint">No failed items in the last 90 days.</p>`}
+    ${onRound?`<h2>Devices and infections, last 90 days</h2><div class="scroll"><table><thead><tr><th>Device</th><th>Device days</th><th>Daily bundle</th><th>Confirmed infections</th><th>Rate per 1,000 days</th></tr></thead><tbody>
+      ${dm.rows.map(r=>`<tr><td>${r.m.name}</td><td class="c">${r.dd}</td><td class="c">${pct(r.chOk,r.ch)}</td><td class="c">${r.hai} ${r.m.hai}</td><td class="c">${r.rate===null?"–":r.rate.toFixed(2)}</td></tr>`).join("")}</tbody></table></div>`:""}
+    <h2>Open corrective actions</h2>
+    ${acts.length?`<ul>${acts.map(a=>`<li>${esc(a.issue)}${a.due?` <small>(due ${fmt(a.due)})</small>`:""}</li>`).join("")}</ul>`:`<p class="hint">None.</p>`}
+    <p class="hint">${isTeam()?"Unit heads see this page for their own department only, read only.":"Read only. For questions, contact the Infection Control Team."}</p></div>`;
 }
 
 /* ================= Settings, backup, auto sign-out ================= */
@@ -2789,7 +3370,7 @@ async function importLocal(){
   return restoreData(D,"merge");
 }
 async function restoreData(D,mode){
-  const arr=["ipc-audits","ipc-actions","ipc-patients","ipc-devices","ipc-events","ipc-mdro","ipc-surg","ipc-log"];
+  const arr=["ipc-audits","ipc-actions","ipc-patients","ipc-devices","ipc-events","ipc-mdro","ipc-surg","ipc-risk","ipc-outbreaks","ipc-iso","ipc-expo","ipc-fit","ipc-train","ipc-sched","ipc-ast","ipc-log"];
   if(mode==="replace"){if(!confirm("Replace everything on this device with the backup? Current data on this device will be lost."))return;
     for(const k of await listKeys())if(k!=="ipc-session"&&!(k in D))await sdel(k);
     for(const [k,v] of Object.entries(D))await sset(k,v);}
@@ -2798,7 +3379,7 @@ async function restoreData(D,mode){
       const m=k==="ipc-log"?[...cur,...inc].sort((a,b)=>a.ts-b.ts):[...cur,...inc];await sset(k,m);}
     const cu=(await sget("ipc-users"))||[],nu=CLOUD?[]:(D["ipc-users"]||[]).filter(u=>!cu.some(x=>x.username===u.username));if(!CLOUD)await sset("ipc-users",[...cu,...nu]);
     for(const [k,v] of Object.entries(D))if(k.startsWith("ipc-photo:")&&(await sget(k))===null)await sset(k,v);
-    for(const k of ["ipc-targets","ipc-bench","ipc-envcustom","ipc-census"])if(D[k]&&!(await sget(k)))await sset(k,D[k]);
+    for(const k of ["ipc-targets","ipc-bench","ipc-envcustom","ipc-census","ipc-cbahi"])if(D[k]&&!(await sget(k)))await sset(k,D[k]);
     toast(`Merged ${added} new records${nu.length?` and ${nu.length} accounts`:""}`);}
   if(!CLOUD)setTimeout(()=>location.reload(),900);
 }
@@ -2860,11 +3441,20 @@ function logcsv(){
   S.mdro=(await sget("ipc-mdro"))||[];
   S.census=(await sget("ipc-census"))||{};
   S.surg=(await sget("ipc-surg"))||[];
+  S.cbahi=(await sget("ipc-cbahi"))||{};
+  S.risk=(await sget("ipc-risk"))||[];
+  S.outbreaks=(await sget("ipc-outbreaks"))||[];
+  S.iso=(await sget("ipc-iso"))||[];
+  S.expo=(await sget("ipc-expo"))||[];
+  S.fit=(await sget("ipc-fit"))||[];
+  S.train=(await sget("ipc-train"))||[];
+  S.sched=(await sget("ipc-sched"))||[];
+  S.ast=(await sget("ipc-ast"))||[];
   S.log=(await sget("ipc-log"))||[];
   S.settings=(await sget("ipc-settings"))||{};
   for(const [k,key] of [["audits","ipc-audits"],["actions","ipc-actions"],["patients","ipc-patients"],["devices","ipc-devices"],["events","ipc-events"],["mdro","ipc-mdro"],["surg","ipc-surg"]]){
     const clean=enDeep(S[k]);if(JSON.stringify(clean)!==JSON.stringify(S[k])){S[k]=clean;mem[key]=clean;await (async()=>{try{if(window.storage)await window.storage.set(key,JSON.stringify(clean),false);else if(LS)LS.setItem(key,JSON.stringify(clean));}catch(e){}})();}}
-  Object.keys(TRACK).forEach(k=>{SNAP[k]=snapOf(mem[k]??({"ipc-audits":S.audits,"ipc-actions":S.actions,"ipc-patients":S.patients,"ipc-devices":S.devices,"ipc-events":S.events,"ipc-users":S.users,"ipc-mdro":S.mdro,"ipc-surg":S.surg})[k]);});
+  Object.keys(TRACK).forEach(k=>{SNAP[k]=snapOf(mem[k]??({"ipc-risk":S.risk,"ipc-outbreaks":S.outbreaks,"ipc-iso":S.iso,"ipc-expo":S.expo,"ipc-fit":S.fit,"ipc-train":S.train,"ipc-sched":S.sched,"ipc-ast":S.ast,"ipc-audits":S.audits,"ipc-actions":S.actions,"ipc-patients":S.patients,"ipc-devices":S.devices,"ipc-events":S.events,"ipc-users":S.users,"ipc-mdro":S.mdro,"ipc-surg":S.surg})[k]);});
   if("serviceWorker" in navigator&&location.protocol==="https:"&&!window.storage){navigator.serviceWorker.register("sw.js").catch(()=>{});}
   const sess=await sget("ipc-session"),u=S.users.find(x=>x.username===sess);
   if(u){S.user=sessUser(u);S.view="home";setTimeout(autoActions,500);}
