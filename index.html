@@ -2878,6 +2878,7 @@ document.addEventListener("click",async e=>{
   else if(a==="editaction"&&isTeam()){const x=S.actions.find(y=>y.id===b.dataset.id);go("actionNew",{actionDraft:{...x}});}
   else if(a==="backup"&&isMaster())backup(false);
   else if(a==="backupph"&&isMaster())backup(true);
+  else if(a==="xlsxall"&&isMaster())exportAllXlsx();
   else if(a==="logcsv"&&isMaster())logcsv();
   else if(a==="savesettings"&&isMaster()){S.settings.idleMin=Math.max(0,+$("#idle").value||0);S.settings.sample=Object.fromEntries(Object.keys(MODULES).map(k=>[k,Math.max(0,+$("#sm-"+k).value||0)]));
     await sset("ipc-settings",S.settings);render();toast("Settings saved");}
@@ -3758,6 +3759,101 @@ async function restoreData(D,mode){
     toast(`Merged ${added} new records${nu.length?` and ${nu.length} accounts`:""}`);}
   if(!CLOUD)setTimeout(()=>location.reload(),900);
 }
+/* ================= Export everything to Excel: one workbook, one sheet per section ================= */
+/* small built-in .xlsx writer (zip, no compression) so it works offline with no outside library */
+const CRC_T=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+const crc32=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRC_T[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;};
+function zipStore(files){ /* files: [[name, Uint8Array]] */
+  const te=new TextEncoder(),parts=[],cen=[];let off=0;
+  const u16=v=>[v&255,(v>>>8)&255],u32=v=>[v&255,(v>>>8)&255,(v>>>16)&255,(v>>>24)&255];
+  for(const [name,data] of files){const nm=te.encode(name),c=crc32(data);
+    const lh=new Uint8Array([0x50,0x4B,3,4,...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(data.length),...u32(data.length),...u16(nm.length),...u16(0)]);
+    parts.push(lh,nm,data);
+    cen.push(new Uint8Array([0x50,0x4B,1,2,...u16(20),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(data.length),...u32(data.length),...u16(nm.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]),nm);
+    off+=lh.length+nm.length+data.length;}
+  const cl=cen.reduce((a,x)=>a+x.length,0);
+  return new Blob([...parts,...cen,new Uint8Array([0x50,0x4B,5,6,0,0,0,0,...u16(files.length),...u16(files.length),...u32(cl),...u32(off),0,0])],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+const xesc=v=>String(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").slice(0,32000);
+const colL=i=>{let s="";i++;while(i){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;};
+function sheetXml(head,rows){
+  if(!rows.length){head=["No records yet"];}
+  const all=[head,...rows],w=head.map((h,i)=>Math.min(60,Math.max(8,...all.slice(0,300).map(r=>String(r[i]??"").length))+2));
+  const cell=(v,r,c,hd)=>{const ref=colL(c)+(r+1);if(v===null||v===undefined||v==="")return "";
+    if(typeof v==="number"&&isFinite(v))return `<c r="${ref}"${hd?' s="1"':""}><v>${v}</v></c>`;
+    return `<c r="${ref}" t="inlineStr"${hd?' s="1"':""}><is><t xml:space="preserve">${xesc(v)}</t></is></c>`;};
+  const last=colL(Math.max(0,head.length-1))+(all.length);
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${w.map((x,i)=>`<col min="${i+1}" max="${i+1}" width="${x}" customWidth="1"/>`).join("")}</cols><sheetData>${all.map((r,ri)=>`<row r="${ri+1}">${r.map((v,ci)=>cell(v,ri,ci,ri===0)).join("")}</row>`).join("")}</sheetData>${rows.length?`<autoFilter ref="A1:${last}"/>`:""}</worksheet>`;
+}
+function xlsxBlob(sheets){ /* sheets: [[name, head, rows]] */
+  const te=new TextEncoder(),names=[];
+  sheets.forEach(([n])=>{let b=n.replace(/[\\\/?*\[\]:]/g," ").slice(0,31),x=b,i=2;while(names.includes(x.toLowerCase()))x=b.slice(0,28)+" "+(i++);names.push(x.toLowerCase());sheets[names.length-1][0]=x;});
+  const f=[["[Content_Types].xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`],
+    ["_rels/.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ["xl/workbook.xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map(([n],i)=>`<sheet name="${xesc(n)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join("")}</sheets></workbook>`],
+    ["xl/_rels/workbook.xml.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ["xl/styles.xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF245E68"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`],
+    ...sheets.map(([,h,r],i)=>[`xl/worksheets/sheet${i+1}.xml`,sheetXml(h,r)])];
+  return zipStore(f.map(([n,t])=>[n,te.encode(t)]));
+}
+/* readable values */
+const YN={y:"Yes",n:"No",na:"N/A"};
+const fd=v=>v&&/^\d{4}-\d{2}-\d{2}/.test(v)?fmt(v.slice(0,10)):v||"";
+const ptCols=pid=>{const p=ptOf(pid)||{};return[p.unit||"",p.bed||"",p.mrn||"",p.name||""];};
+/* any other record: nested fields become "a / b" columns; images and secrets are left out */
+function flatSheet(list,front=[],frontHead=[]){
+  const skip=/^(photo|img|hash|salt|ts)$|photos?$/i,flat=(o,pre="",out={})=>{for(const [k,v] of Object.entries(o||{})){if(skip.test(k))continue;const key=pre?`${pre} / ${k}`:k;
+      if(v&&typeof v==="object"&&!Array.isArray(v))flat(v,key,out);
+      else if(Array.isArray(v))out[key]=v.every(x=>typeof x!=="object")?v.join("; "):JSON.stringify(v).replace(/"img":"data:[^"]*"/g,'"img":"(image)"');
+      else out[key]=typeof v==="string"?(/^data:image/.test(v)?"(image)":fd(v)):v;}return out;};
+  const nice=k=>k.split(" / ").map(p=>({mrn:"MRN / PIN",dob:"Date of birth",admitDate:"Admission",dept:"Department",by:"Entered by",mdroType:"MDRO type",hh:"Hand hygiene",ppe:"PPE",fu:"Follow-up",bd:"Bowie-Dick",ci:"Chemical indicator",bi:"Biological indicator"})[p]||p.replace(/([a-z])([A-Z])/g,"$1 $2").replace(/^./,c=>c.toUpperCase())).join(" / ");
+  const rows=list.map(x=>flat(x)),keys=[...new Set(rows.flatMap(r=>Object.keys(r)))].filter(k=>k!=="id"&&k!=="patientId");
+  return[[...frontHead,...keys.map(nice)],list.map((x,i)=>[...front.map(fn=>fn(x)),...keys.map(k=>YN[rows[i][k]]??rows[i][k]??"")])];
+}
+function exportAllXlsx(){
+  const sh=[];
+  /* audits */
+  {const ans={y:"Yes",n:"No",na:"N/A"},envAns={y:"Clean",n:"Not clean",na:"N/A"};
+   sh.push(["Audits",["Date","Audit","Department","Location","Staff category","Staff ID","Precautions","Cleaning type","Method","Responsibility","Moments","Action","Gloves","Checklist","Result","Feedback given","Photos","Auditor","Note"],
+     S.audits.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(a=>[fd(a.date),MODULES[a.type]?.name||a.type,deptName(a),locName(a),a.category?catName(a):"",a.staffId||"",precName(a),a.cleanType||"",a.method||"",a.resp||"",(a.moments||[]).join("+"),a.action||"",a.gloves||"",
+       a.type==="hh"?"":(CHECK[a.type]||[]).filter(i=>a.items?.[i.k]).map(i=>`${withWhy(i,a)}: ${(a.type==="env"?envAns:ans)[a.items[i.k]]}`).join(" | "),a.compliant?"Compliant":"Not compliant",a.feedback||"",photoCount(a),a.auditor||"",a.note||""])]);}
+  /* patients and devices */
+  sh.push(["Patients",["Unit","Bed","MRN / PIN","ID type","ID number","Name","Last name","First name","Sex","Date of birth","Nationality","Admission","Diagnosis","Status","Added by"],
+    S.patients.map(p=>[p.unit,p.bed,p.mrn,p.idType||(p.idNo?"National ID or Iqama":""),p.idNo||"",p.name,p.lastName||"",p.firstName||"",p.sex||"",fd(p.dob),p.nationality||"",fd(p.admitDate),p.diagnosis||"",p.status||"",p.by||""])]);
+  sh.push(["Devices",["Unit","Bed","MRN / PIN","Patient","Device","Catheter type","Permanent or temporary","Site","Route","Size","Birth weight","Inserted at","Inserted","Removed","Insertion observed","Insertion bundle","Device days","Daily checks","Fully compliant checks","Unit manager signed"],
+    S.devices.map(d=>{const m=DEV[d.type]||{name:d.type,ins:[]},ins=m.ins.filter(i=>d.insItems?.[i.k]);return[...ptCols(d.patientId),m.name,d.clType||"",d.clDuration||"",d.clSite||"",d.route||"",d.size||"",d.birthWt||"",d.place||"",fd(d.insertDate),fd(d.removed),d.insObserved||"",
+      ins.map(i=>`${i.n||""} ${i.t.slice(0,40)}: ${YN[d.insItems[i.k]]}`).join(" | "),dayDiff(d.insertDate,d.removed||today())+1,d.checks.length,d.checks.filter(checkOk).length,(d.signoffs||[]).map(x=>`${x.name} ${fmt(x.date)}`).join("; ")];})]);
+  {const rows=[];S.devices.forEach(d=>{const m=DEV[d.type];if(!m)return;d.checks.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(c=>rows.push([...ptCols(d.patientId),m.name,fd(d.insertDate),fd(c.date),devDay(d,c.date),...m.maint.map(i=>YN[c.items?.[i.k]]||""),
+     m.maint.filter(i=>c.items?.[i.k]==="n").map(i=>withWhy(i,c)).join(" | "),checkOk(c)?"Compliant":"Not compliant",c.by||"",c.note||""]));});
+   sh.push(["Daily checks",["Unit","Bed","MRN / PIN","Patient","Device","Inserted","Check date","Device day","Element 1","Element 2","Element 3","Element 4","Element 5","Not done","Result","By","Note"],rows.map(r=>{const k=r.length;return r;})]);}
+  {const rows=[];S.devices.filter(d=>d.type==="mv").forEach(d=>d.checks.filter(c=>c.vae).sort((a,b)=>a.date.localeCompare(b.date)).forEach(c=>{const v=c.vae;rows.push([...ptCols(d.patientId),fd(d.insertDate),fd(c.date),devDay(d,c.date),vaeNum(v.peep),vFiO2(v.fio2),vaeNum(v.temp),vaeNum(v.wbc),v.abx||"",v.spec||"",v.pe||"",v.org||"",v.type||"",v.cm||"",c.by||""]);}));
+   sh.push(["VAE monitoring",["Unit","Bed","MRN / PIN","Patient","MV date","Date","MV day","PEEP min","FiO2 min (%)","Temp","WBC","ABX name","Specimen","Polys/epis","Organism","VAE type","Comment","By"],rows]);}
+  {const rows=[];S.devices.filter(d=>d.type==="cl").forEach(d=>{const one=(x,kind,list)=>rows.push([...ptCols(d.patientId),kind,fd(x.date),x.shift||"",x.tunnel||"",x.physician||"",...list.map(i=>YN[x.items?.[i.k]]||""),list.filter(i=>x.items?.[i.k]==="n").map(i=>`${i.k}${x.cmts?.[i.k]?` (${x.cmts[i.k]})`:""}`).join("; "),x.sig?.icp?.name||x.by||"",x.sig?.head?.name||""]);
+     if(d.crrsIns)one(d.crrsIns,"Insertion",CRRS_INS);(d.crrsMnt||[]).forEach(x=>one(x,"Maintenance",CRRS_MNT));});
+   sh.push(["CRRS",["Unit","Bed","MRN / PIN","Patient","Form","Date","Shift","CVC type","Physician",...Array.from({length:12},(_,i)=>`Item ${i+1}`),"Not done (with comment)","ICP","Head of ICU / head nurse"],rows.map(r=>{/* maintenance has 11 items: pad to 12 */if(r[4]==="Maintenance")r.splice(9+11,0,"");return r;})]);}
+  {const rows=[];S.devices.filter(d=>d.type==="uc").forEach(d=>(d.adh||[]).forEach(x=>{const f=flatSheet([x]);rows.push([...ptCols(d.patientId),fd(x.date),adhRate(x)+"%",x.by||"",f[1][0].join(" | ")]);}));
+   sh.push(["UC adherence",["Unit","Bed","MRN / PIN","Patient","Date","Adherence","By","Details"],rows]);}
+  {const [h,r]=flatSheet(S.surg,[x=>ptCols(x.patientId)[0],x=>ptCols(x.patientId)[2],x=>ptCols(x.patientId)[3],x=>surgOk(x)?"Compliant":"Not compliant"],["Unit","MRN / PIN","Patient","Result"]);sh.push(["Surgical bundle",h,r]);}
+  {const [h,r]=flatSheet(S.events,[x=>ptCols(x.patientId)[0],x=>ptCols(x.patientId)[1],x=>ptCols(x.patientId)[2],x=>ptCols(x.patientId)[3],x=>{try{return assess(x).label;}catch(_){return "";}}],["Unit","Bed","MRN / PIN","Patient","Screening result"]);sh.push(["HAI cases",h,r]);}
+  {const [h,r]=flatSheet(S.mdro,[x=>onsetOf(x)],["Onset"]);sh.push(["MDRO",h,r]);}
+  {const [h,r]=flatSheet(S.iso.map(x=>({...x,reasons:isoReasonTxt(x)})),[x=>x.end?"Ended":"Active"],["Status"]);sh.push(["Isolation",h,r]);}
+  {const [h,r]=flatSheet(S.outbreaks);sh.push(["Outbreaks",h,r]);}
+  {const [h,r]=flatSheet(S.actions,[x=>isOverdue(x)?"Overdue":""],["Overdue"]);sh.push(["Corrective actions",h,r]);}
+  {const rows=[];S.risk.forEach(ra=>(ra.items||[]).forEach(it=>{const sc=(+it.prob||0)*(+it.impact||0)*(+it.prep||0);rows.push([ra.year,it.category||"",it.hazard,+it.prob||"",+it.impact||"",+it.prep||"",sc||""]);}));
+   sh.push(["Risk assessment",["Year","Category","Hazard","Probability","Impact","Preparedness","Score (of 48)"],rows]);
+   const pl=[];S.risk.forEach(ra=>(ra.plan||[]).forEach(p=>pl.push([ra.year,p.hazard||"",p.goal||"",p.measure||"",p.owner||"",fd(p.due),p.status||""])));sh.push(["Risk plan",["Year","Hazard","Goal","Measure","Owner","Due","Status"],pl]);}
+  {const [h,r]=flatSheet(S.expo,[x=>fuDue(x).join(", ")],["Follow-up due"]);sh.push(["Occupational exposures",h,r]);}
+  {const [h,r]=flatSheet(S.fit,[x=>fitValid(x)?"Valid":"Not valid"],["Fit test valid now"]);sh.push(["N95 fit testing",h,r]);}
+  {const [h,r]=flatSheet(S.train);sh.push(["Training",h,r]);}
+  {const [h,r]=flatSheet(S.sched,[x=>S.users.find(u=>u.username===x.assignee||u.uid===x.assignee)?.name||x.assignee||"Anyone"],["Assigned to"]);sh.push(["Audit schedule",h,r]);}
+  {const c=S.cbahi||{};sh.push(["CBAHI readiness",["Area","Status","Standard or reference","Note"],CBAHI_AREAS.map(a=>{const v=c[a.k]||{};return[a.t,v.status||"",v.ref||"",v.note||""];})]);}
+  {const st=S.census||{};const rows=[];Object.entries(st).forEach(([u,ms])=>Object.entries(ms||{}).forEach(([m,v])=>rows.push([u,m,+v||""])));sh.push(["Patient days",["Unit","Month","Patient days"],rows]);}
+  sh.push(["Users",["Name",CLOUD?"Email":"Username","Account type","Screens or access"],S.users.map(u=>[u.name,CLOUD?u.email:u.username,ROLES[u.role]||u.role,u.role==="team"?"Full access":u.role==="prac"?(u.perms?.screens||[]).join(", "):[...(u.perms?.mods||[]),...(u.perms?.depts||[])].join(", ")])]);
+  sh.unshift(["About",["Item","Value"],[["Platform","Al-Sobh Hospital Infection Control Platform"],["Exported",`${fmt(today())} ${new Date().toTimeString().slice(0,5)}`],["Exported by",S.user.name],["Note","Readable copy for analysis. To restore data, use the JSON backup, not this file. Contains patient details: keep on a hospital computer."],...sh.map(x=>[x[0],`${x[2].length} rows`])]]);
+  const a=document.createElement("a");a.href=URL.createObjectURL(xlsxBlob(sh));a.download=`ipc-all-data-${today()}.xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  toast(`Excel file ready: ${sh.length-1} sheets`);
+  return sh;
+}
 function vSettings(){
   const st=S.settings;
   return `<div class="wrap">${crumb("Data and settings")}
@@ -3767,6 +3863,9 @@ function vSettings(){
     <div class="card"><p style="margin-top:0">Last backup on this device: <b>${st.lastBackup?fmt(st.lastBackup):"never"}</b>${!st.lastBackup||st.lastBackup<addDays(today(),-7)?` <span class="tag no">Due</span>`:""}</p>
       <div class="row"><div style="flex:0 0 auto"><button class="btn" data-a="backup">Download backup</button></div><div style="flex:0 0 auto"><button class="btn ghost" data-a="backupph">Backup with photos</button></div></div>
       <p class="hint">The file contains patient details. Keep it on a hospital computer or drive, not on personal storage.</p></div>
+    <h2>Export everything to Excel</h2>
+    <div class="card"><p style="margin-top:0">One Excel file with a sheet for each part of the platform: audits, patients, devices, daily checks, VAE monitoring, CRRS, HAI cases, MDRO, isolation, outbreaks, corrective actions, risk assessment, occupational health, training and more. For reading and analysis. To restore data, use the backup above.</p>
+      <button class="btn" data-a="xlsxall">Export everything to Excel</button></div>
     <h2>Bring in data from another device</h2>
     <div class="card"><p style="margin-top:0">On the other device, download a backup and send the file here. <b>Merge</b> adds the entries this device does not have yet. <b>Replace</b> wipes this device and loads the backup.</p>
       <div class="row"><span class="btn ghost file-btn" style="flex:0 0 auto">Merge a backup<input type="file" accept=".json,application/json" data-restore="merge"></span>
