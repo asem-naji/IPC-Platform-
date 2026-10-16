@@ -2915,10 +2915,17 @@ document.addEventListener("click",async e=>{
   else if(a==="scheddel"){S.sched=S.sched.filter(x=>x.id!==b.dataset.id);await sset("ipc-sched",S.sched);render();}
   else if(a==="schedcopy"){const w=S.schedW||weekStart(today());S.sched.push(...S.sched.filter(x=>x.week===addDays(w,-7)).map(x=>({...x,id:uid(),week:w})));await sset("ipc-sched",S.sched);render();}
   /* record */
-  else if(a==="newiso")go("iso",{form:{unit:"",bed:"",mrn:"",precautions:[],reason:"",start:today(),sign:"",ppe:"",room:"",equip:"",note:""}});
+  else if(a==="newiso")go("iso",{form:{unit:"",bed:"",mrn:"",precautions:[],reasons:[],reasonOther:"",reason:"",start:today(),sign:"",ppe:"",room:"",equip:"",note:""}});
+  else if(a==="isofrommdro"&&(()=>{const m=S.mdro.find(x=>x.id===b.dataset.id),ex=m.mrn&&S.iso.find(x=>!x.end&&x.mrn===m.mrn);
+      if(!ex)return false;const r=ISO_REASONS.includes(m.mdroType)?m.mdroType:"Other",rs=[...new Set([...isoReasons(ex),r])];
+      go("iso",{form:{...ex,reasons:rs,reasonOther:ex.reasonOther||(r==="Other"?`${m.mdroType} ${m.organism}`.trim():""),mdroIds:[...new Set([...(ex.mdroIds||[ex.mdroId].filter(Boolean)),m.id])],precautions:[...new Set([...(ex.precautions||[]),...(ISO_PREC[r]??["Contact"])])]}});
+      toast("This patient is already on isolation: the new organism was added",false);return true;})()){}
   else if(a==="isofrommdro"){const m=S.mdro.find(x=>x.id===b.dataset.id);go("iso",{form:{unit:m.unit,bed:"",mrn:m.mrn||"",mdroId:m.id,precautions:m.mdroType==="C. difficile"?["Contact plus (C. difficile)"]:["Contact"],
-    reason:ISO_REASONS.includes(m.mdroType)?m.mdroType:"Other",start:today(),sign:"",ppe:"",room:"",equip:"",note:""}});}
-  else if(a==="editiso")go("iso",{form:{...S.iso.find(x=>x.id===b.dataset.id)}});
+    reasons:[ISO_REASONS.includes(m.mdroType)?m.mdroType:"Other"],reasonOther:ISO_REASONS.includes(m.mdroType)?"":`${m.mdroType} ${m.organism}`.trim(),reason:"",start:today(),sign:"",ppe:"",room:"",equip:"",note:""}});}
+  else if(a==="editiso"){const x=S.iso.find(y=>y.id===b.dataset.id);go("iso",{form:{...x,reasons:isoReasons(x).filter(r=>ISO_REASONS.includes(r)).concat(isoReasons(x).some(r=>!ISO_REASONS.includes(r))?["Other"]:[]),reasonOther:x.reasonOther||isoReasons(x).filter(r=>!ISO_REASONS.includes(r)).join(", ")}});}
+  else if(a==="isoreason"){const v=b.dataset.v,on=(f.reasons||[]).includes(v);f.reasons=on?f.reasons.filter(x=>x!==v):[...(f.reasons||[]),v];
+    if(!on){const add=ISO_PREC[v]??["Contact"];f.precautions=[...new Set([...(f.precautions||[]),...add])];}
+    if(f.precautions?.includes("Contact plus (C. difficile)"))f.precautions=f.precautions.filter(x=>x!=="Contact");S.error="";render();}
   else if(a==="isoprec"){const v=b.dataset.v;f.precautions=(f.precautions||[]).includes(v)?f.precautions.filter(x=>x!==v):[...(f.precautions||[]),v];render();}
   else if(a==="saveiso")saveIso();
   else if(a==="endiso"){const x=S.iso.find(y=>y.id===b.dataset.id);if(confirm(`End isolation for bed ${x.bed}?`)){x.end=today();await sset("ipc-iso",S.iso);render();toast("Isolation ended");}}
@@ -3437,11 +3444,23 @@ function vOutbreak(){
 
 /* ================= 6. Isolation board ================= */
 const ISO_REASONS=["MRSA","VRE","CRE","CRAB","CRPA","ESBL","C. difficile","Candida auris","Tuberculosis (suspected or confirmed)","Influenza","COVID-19","MERS-CoV (suspected or confirmed)","Varicella or measles","Scabies","Other"];
+/* reasons grouped by how they spread; picking one suggests its precautions */
+const ISO_GROUPS=[
+  ["Contact",["MRSA","VRE","CRE","CRAB","CRPA","ESBL","Candida auris","Scabies"]],
+  ["Contact plus",["C. difficile"]],
+  ["Droplet",["Influenza","COVID-19"]],
+  ["Airborne",["Tuberculosis (suspected or confirmed)","Varicella or measles","MERS-CoV (suspected or confirmed)"]],
+  ["Other",["Other"]]];
+const ISO_PREC={"C. difficile":["Contact plus (C. difficile)"],"Influenza":["Droplet"],"COVID-19":["Droplet","Contact"],
+  "Tuberculosis (suspected or confirmed)":["Airborne"],"Varicella or measles":["Airborne","Contact"],"MERS-CoV (suspected or confirmed)":["Airborne","Contact"],"Other":[]};
+const ISO_PRECS=["Contact","Droplet","Airborne","Contact plus (C. difficile)"];
+const isoReasons=x=>x.reasons?.length?x.reasons:x.reason?[x.reason]:[];
+const isoReasonTxt=x=>isoReasons(x).map(r=>r==="Other"&&x.reasonOther?x.reasonOther:r).join(", ");
 const ISO_CHECKS=[["sign","Precaution sign on the door"],["ppe","PPE available at the door"],["room","Single room or cohort"],["equip","Dedicated equipment"]];
 const isoOk=x=>ISO_CHECKS.every(([k])=>x[k]==="Yes");
 function vIsoBoard(){
   const act=S.iso.filter(x=>!x.end),units=[...new Set(act.map(x=>x.unit))].sort();
-  const need=S.mdro.filter(m=>m.date>=addDays(today(),-14)&&!S.iso.some(x=>x.mdroId===m.id));
+  const need=S.mdro.filter(m=>m.date>=addDays(today(),-14)&&!S.iso.some(x=>x.mdroId===m.id||(x.mdroIds||[]).includes(m.id)));
   return `<div class="wrap wide">${crumb("Isolation board")}
     <h1>Isolation board</h1>
     <p class="lead">Every patient on transmission-based precautions now, with the checks for each room. Precautions stay until you end them.</p>
@@ -3453,7 +3472,7 @@ function vIsoBoard(){
     <div style="margin-top:14px"><button class="btn" data-a="newiso">Add a patient to isolation</button></div>
     ${units.map(u=>`<h2>${esc(u)}</h2><div class="isogrid">${act.filter(x=>x.unit===u).sort((a,b)=>String(a.bed).localeCompare(String(b.bed),undefined,{numeric:true})).map(x=>`
       <div class="card iso"><div class="iso-h"><b>Bed ${esc(x.bed)}</b><span>${(x.precautions||[]).map(p=>`<span class="tag ${p==="Airborne"?"no":"mid"}">${p}</span>`).join(" ")}</span></div>
-        <p class="meta">${esc(x.reason)}${x.mrn?`, MRN ${esc(x.mrn)}`:""}. Since ${fmt(x.start)} (day ${dayDiff(x.start,today())+1}).</p>
+        <p class="meta"><b>${esc(isoReasonTxt(x))}</b>${x.mrn?`, MRN ${esc(x.mrn)}`:""}. Since ${fmt(x.start)} (day ${dayDiff(x.start,today())+1}).</p>
         <p class="meta">${ISO_CHECKS.map(([k,l])=>`${x[k]==="Yes"?"✓":"✗"} ${l}`).join("<br>")}</p>
         <div class="row"><div style="flex:0 0 auto"><button class="btn ghost small" data-a="editiso" data-id="${x.id}">Update</button></div><div style="flex:0 0 auto"><button class="btn ghost small" data-a="endiso" data-id="${x.id}">End isolation</button></div></div></div>`).join("")}</div>`).join("")||`<div class="card" style="margin-top:12px">No patients on isolation.</div>`}
   </div>`;
@@ -3463,15 +3482,23 @@ function vIso(){
   return `<div class="wrap">${crumb("Isolation",`<span>/</span><button data-a="nav" data-v="isoboard">Isolation board</button>`)}
     <h1>${f.id?"Update isolation":"Start isolation"}</h1>
     <div class="row"><div>${selRow("is1","Unit","unit",INPATIENT,f)}</div><div>${inputRow("is2","Bed or room","bed",f)}</div><div>${inputRow("is3","MRN <small>(optional)</small>","mrn",f,"text",'inputmode="numeric"')}</div></div>
-    <label class="f">Precautions</label><div class="chips">${["Contact","Droplet","Airborne","Contact plus (C. difficile)"].map(p=>`<button class="chip" aria-pressed="${(f.precautions||[]).includes(p)}" data-a="isoprec" data-v="${p}">${p}</button>`).join("")}</div>
-    ${selRow("is4","Reason","reason",ISO_REASONS,f)}
+    <label class="f">Reasons <small>(choose all that apply, e.g. MRSA and CRE, or influenza with MRSA colonisation)</small></label>
+    ${ISO_GROUPS.map(([g,l])=>`<p class="hint" style="margin:8px 0 4px;font-weight:700">${g}</p><div class="chips">${l.map(r=>`<button class="chip" aria-pressed="${(f.reasons||[]).includes(r)}" data-a="isoreason" data-v="${esc(r)}">${r==="Other"?"Other (write below)":r}</button>`).join("")}</div>`).join("")}
+    ${(f.reasons||[]).includes("Other")?inputRow("is4o","Other reason","reasonOther",f):""}
+    <label class="f">Precautions <small>(choose all that apply; suggested from the reasons, change if needed)</small></label>
+    <div class="chips">${ISO_PRECS.map(p=>`<button class="chip" aria-pressed="${(f.precautions||[]).includes(p)}" data-a="isoprec" data-v="${p}">${(f.precautions||[]).includes(p)?"\u2713 ":""}${p}</button>`).join("")}</div>
+    ${(f.precautions||[]).length>1?`<p class="hint">Combined: ${f.precautions.join(" + ")}</p>`:""}
     ${inputRow("is5","Start date","start",f,"date",`max="${today()}"`)}
     ${ISO_CHECKS.map(([k,l])=>chipsBlock(l,k,["Yes","No"],f)).join("")}
     ${noteBlock(f)}
     ${errHtml()}<div style="margin-top:16px"><button class="btn block" data-a="saveiso">Save</button></div></div>`;
 }
 async function saveIso(){const f=S.form;
-  if(!f.unit||!String(f.bed||"").trim())return fail("Enter the unit and bed.");if(!(f.precautions||[]).length)return fail("Select the precautions.");if(!f.reason)return fail("Select the reason.");
+  if(!f.unit||!String(f.bed||"").trim())return fail("Enter the unit and bed.");
+  if(!(f.reasons||[]).length)return fail("Select at least one reason.");
+  if((f.reasons||[]).includes("Other")&&!String(f.reasonOther||"").trim())return fail("Write the other reason.");
+  if(!(f.precautions||[]).length)return fail("Select the precautions.");
+  f.reason=isoReasonTxt(f);
   if(!f.start)return fail("Enter the start date.");
   await saveRec("ipc-iso",S.iso,{...f,id:f.id||uid(),bed:String(f.bed).trim(),by:f.by||S.user.name});go("isoboard");toast(isoOk(f)?"Saved":"Saved: some room checks are not met",!isoOk(f));}
 
