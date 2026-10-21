@@ -297,6 +297,7 @@ td.mid{background:#FFF1CC}
 @media (max-width:760px){.ovcards{grid-template-columns:1fr 1fr}.ovcards .ovcard:last-child:nth-child(odd){grid-column:1/-1}.ovmini{grid-template-columns:1fr 1fr}.ovgrid{grid-template-columns:1fr}.ovcard>b{font-size:1.6rem}}
 @media print{.ovcards{grid-template-columns:repeat(5,1fr)}.ovgrid{grid-template-columns:1fr 1fr}.ovf{display:none}}
 .role.prac{background:#E8EEF7;color:#2B4C7E}
+.ver{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;background:var(--paper);color:var(--muted);font-size:.78rem}
 .backrow{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
 .backrow .wrap{display:flex;justify-content:space-between;align-items:center;padding-top:6px;padding-bottom:6px}
 .backbtn{display:inline-flex;align-items:center;gap:4px;border:1.5px solid var(--line);background:#fff;color:var(--primary);font-weight:700;border-radius:999px;padding:7px 14px 7px 10px;font-size:.95rem;cursor:pointer;min-height:40px}
@@ -332,6 +333,7 @@ const LOC={
   "Isolation rooms":{rooms:["ER isolation 1","ER isolation 2","ER isolation 3","ICU isolation 9","ICU isolation 10","ICU isolation 21","CCU isolation","Room 315","Room 317","Room 354","Room 355"]},
   "Other":{rooms:"text",areas:[]}};
 const STAFF=["Nurse","Doctor","Housekeeping","Other"];
+const APP_VERSION="21 Oct 2026";
 const ROLES={team:"Master",prac:"Infection Control Practitioner",link:"Infection Control Link",unit:"Unit head (old account)"};
 const ROLE_CHOICES=["prac","link","team"];
 const ROLE_HELP={team:"Master: full access to everything, including managing users, backup and settings.",
@@ -1737,7 +1739,7 @@ function devCard(d){
   return `<div class="dev${S.justAdded===d.id?" just-saved":""}" style="--c:${m.hex}">
     <div class="row" style="align-items:start"><div style="flex:3">
       <b>${m.name}${det?`<span class="meta"> (${esc(det)})</span>`:""}</b>
-      <p class="meta">${d.removed?`Inserted ${fmt(d.insertDate)}, ${d.endReason?esc(d.endReason).toLowerCase()+" on":"removed"} ${fmt(d.removed)} after ${dayDiff(d.insertDate,d.removed)+1} days`:`Device day <b style="color:var(--ink)">${devDay(d)}</b>, inserted ${fmt(d.insertDate)} (${esc(d.place)})`}</p>
+      <p class="meta">${d.removed?`Inserted ${d.insertUnknown?"at another hospital, counted from "+fmt(d.insertDate):fmt(d.insertDate)}, ${d.endReason?esc(d.endReason).toLowerCase()+" on":"removed"} ${fmt(d.removed)} after ${dayDiff(d.insertDate,d.removed)+1} days`:`Device day <b style="color:var(--ink)">${devDay(d)}</b>, ${d.insertUnknown?`inserted at another hospital (date unknown), counted from admission ${fmt(d.insertDate)}`:`inserted ${fmt(d.insertDate)} (${esc(d.place)})`}`}</p>
       <p class="meta">${m.ins.length?(ok===null?"Insertion bundle: not observed":`Insertion bundle: <span class="tag ${ok?"ok":"no"}">${ok?"Compliant":"Not compliant"}</span>`):"No insertion bundle on the form"}.
         ${(d.signoffs||[]).length?`Unit manager signed ${fmt(d.signoffs.at(-1).date)}. `:""}${d.checks.length} daily ${d.checks.length===1?"check":"checks"}${last?`, last ${fmt(last.date)} <span class="tag ${checkOk(last)?"ok":"no"}">${checkOk(last)?"Compliant":"Not compliant"}</span>`:""}</p>
       ${d.type==="uc"?(()=>{const l=(d.adh||[]).slice().sort((a,b)=>b.date.localeCompare(a.date)),r=l[0]?adhRate(l[0]):null;
@@ -1788,8 +1790,9 @@ function vDevNew(){
   return `<div class="wrap">${bcrumb(`Add ${m.name.toLowerCase()}`,`<span>/</span><button data-a="openpt" data-id="${p.id}">Bed ${esc(p.bed)}</button>`)}
     <h1 style="border-left:6px solid ${m.hex};padding-left:10px">Add ${m.name.toLowerCase()}</h1>
     <p class="lead">${esc(p.name)}, bed ${esc(p.bed)}. Device days count from the insertion date, which is day 1.</p>
-    <div class="row"><div><label class="f" for="di">${f.type==="mv"?"Intubation / connection date":"Insertion date"}</label><input type="date" id="di" data-bind="insertDate" value="${f.insertDate}" max="${today()}"></div>
-      <div><label class="f" for="dpl">Place of insertion</label><select id="dpl" data-bind="place">${PLACES.map(x=>`<option ${f.place===x?"selected":""}>${x}</option>`).join("")}</select></div></div>
+    <div class="row"><div><label class="f" for="dpl">Place of insertion</label><select id="dpl" data-bind="place" data-placechg="1">${PLACES.map(x=>`<option ${f.place===x?"selected":""}>${x}</option>`).join("")}</select></div>
+      <div><label class="f" for="di">${f.type==="mv"?"Intubation / connection date":"Insertion date"}${f.place==="Another hospital"?` <small>(optional, if known)</small>`:""}</label><input type="date" id="di" data-bind="insertDate" value="${f.insertDate||""}" max="${today()}"></div></div>
+    ${f.place==="Another hospital"?`<p class="hint">If the date is not known, leave it empty. Device days will count from the admission date${p.admitDate?` (${fmt(p.admitDate)})`:""}, which is when the device came under this hospital's care.</p>`:""}
     ${f.type==="cl"?`${chipsBlock("Type of central line catheter used","clType",CL_TYPES,f)}${chipsBlock("Type of catheter","clDuration",["Permanent","Temporary"],f)}${chipsBlock("Site","clSite",CL_SITES,f)}${chipsBlock("For neonates: birth weight (optional)","birthWt",BIRTH_WT,f)}`:""}
     ${f.type==="mv"||f.type==="pv"?chipsBlock("Airway","route",MV_ROUTES,f):""}
     ${f.type==="pv"?chipsBlock("Birth weight (neonates only)","birthWt",BIRTH_WT,f):""}
@@ -2267,16 +2270,18 @@ async function saveDev(){
   const f=S.form,m=DEV[f.type];
   const same=S.devices.filter(x=>x.patientId===S.pid&&x.type===f.type&&!x.removed);
   if(!m.multi&&same.length)return fail(`This patient already has an active ${m.name.toLowerCase()}. Remove it first, or open it from the patient page.`);
-  if(m.multi&&same.some(x=>x.insertDate===f.insertDate&&x.clSite===f.clSite&&x.clType===f.clType))return fail(`This ${m.name.toLowerCase()} is already recorded (same type, site and insertion date).`);
+  if(m.multi&&f.insertDate&&same.some(x=>x.insertDate===f.insertDate&&x.clSite===f.clSite&&x.clType===f.clType))return fail(`This ${m.name.toLowerCase()} is already recorded (same type, site and insertion date).`);
+  const pt=ptOf(S.pid),unk=!f.insertDate&&f.place==="Another hospital";
+  if(unk)f.insertDate=pt?.admitDate&&pt.admitDate<=today()?pt.admitDate:today();
   if(!f.insertDate)return fail("Enter the insertion date.");
   if(f.insertDate>today())return fail("The insertion date cannot be in the future.");
   if(f.type==="cl"&&(!f.clType||!f.clSite||!f.clDuration))return fail("Select the type of central line, permanent or temporary, and the site.");
   if((f.type==="mv"||f.type==="pv")&&!f.route)return fail("Select the airway.");
   if(m.ins.length&&!f.insObserved)return fail("Say whether the insertion was observed.");
   if(f.insObserved==="Yes"){const i=m.ins.findIndex(x=>!f.items[x.k]);if(i>-1)return fail(`Answer item ${m.ins[i].n||i+1} of the insertion bundle.`);}
-  const d={id:uid(),patientId:S.pid,type:f.type,insertDate:f.insertDate,place:f.place,clType:f.clType,clSite:f.clSite,clDuration:f.clDuration,route:f.route,size:f.size,birthWt:f.birthWt||"",
+  const d={id:uid(),patientId:S.pid,type:f.type,insertDate:f.insertDate,...(unk?{insertUnknown:true}:{}),place:f.place,clType:f.clType,clSite:f.clSite,clDuration:f.clDuration,route:f.route,size:f.size,birthWt:f.birthWt||"",
     insObserved:m.ins.length?f.insObserved:"N/A",insItems:f.insObserved==="Yes"?{...f.items}:{},removed:null,checks:[],by:S.user.name};
-  S.devices.push(d);await persistB();S.justAdded=d.id;go("patient",{pid:S.pid});S.justAdded=null;toast(`${m.name} added, inserted ${fmt(d.insertDate)}`);
+  S.devices.push(d);await persistB();S.justAdded=d.id;go("patient",{pid:S.pid});S.justAdded=null;toast(unk?`${m.name} added: inserted at another hospital, counted from admission ${fmt(d.insertDate)}`:`${m.name} added, inserted ${fmt(d.insertDate)}`);
 }
 async function saveCheck(){
   const f=S.form,d=devOf(S.did),m=DEV[d.type];
@@ -2678,7 +2683,7 @@ function render(){
   const views={setup:vSetup,login:vLogin,home:vHome,overview:vOverview,surv:vSurv,records:vRecords,dash:vDash,actions:vActions,actionNew:vActionNew,users:vUsers,changepw:vChangePw,hh:vHH,ppe:vPPE,waste:vWaste,env:vEnv,round:vRound,ptform:vPtForm,patient:vPatient,devnew:vDevNew,device:vDevice,check:vCheck,signoff:vSignoff,culture:vCulture,cases:vCases,case:vCase,bdash:vBDash,surg:vSurg,crrsins:vCrrs,crrsmnt:vCrrs,uaccess:vUAccess,settings:vSettings,log:vLog,risk:vRisk,cbahi:vCbahi,spc:vSpc,outbreaks:vOutbreaks,outbreak:vOutbreak,
   isoboard:vIsoBoard,iso:vIso,staffhealth:vStaffHealth,expo:vExpo,fit:vFit,training:vTraining,train:vTrain,abg:vAbg,sched:vSched,scorecard:vScorecard,report:vReport,mdro:vMdro,mdronew:vMdroNew,mdroimp:vMdroImp,dischg:vDischarge,bench:vBench,adh:vAdh};
   const modal=S.modal?`<div class="modal" data-a="closemodal"><div class="inner"><button class="btn ghost small" data-a="closemodal">Close</button>${S.modal}</div></div>`:"";
-  const foot=`<footer class="foot"><span>© ${new Date().getFullYear()} <b>Dr. Asem Naji</b>. All rights reserved.</span><span>Infection Prevention and Control, Al-Sobh Hospital, Jeddah</span></footer>`;
+  const foot=`<footer class="foot"><span>© ${new Date().getFullYear()} <b>Dr. Asem Naji</b>. All rights reserved. <span class="ver">Version ${APP_VERSION}</span></span><span>Infection Prevention and Control, Al-Sobh Hospital, Jeddah</span></footer>`;
   const back=S.user&&!["home","login","setup"].includes(S.view)?`<div class="backrow noprint"><div class="wrap wide"><button class="backbtn" data-a="back" aria-label="Back to the previous screen"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M15.4 4.6a1 1 0 0 1 0 1.4L9.4 12l6 6a1 1 0 1 1-1.4 1.4l-6.7-6.7a1 1 0 0 1 0-1.4l6.7-6.7a1 1 0 0 1 1.4 0Z"/></svg>Back</button><button class="backbtn ghostb" data-a="nav" data-v="home">Home</button></div></div>`:"";
   $("#app").innerHTML=bar+back+(views[S.view]||vLogin)()+foot+modal;
   enhanceDates();enhanceNumbers();enhanceSigs();renderAI();
@@ -3000,6 +3005,7 @@ document.addEventListener("change",async e=>{
   if(t.dataset.astimp&&t.files[0]&&isTeam()){astFile(t.files[0]);t.value="";return;}
   if(t.dataset.scd){S.scD=t.value;render();return;}
   if(t.dataset.ov){S[t.dataset.ov]=t.value;render();return;}
+  if(t.dataset.placechg&&S.form){if(t.value==="Another hospital"){if(S.form.insertDate===today())S.form.insertDate="";if(!S.form.insObserved)S.form.insObserved="No";}else if(!S.form.insertDate)S.form.insertDate=today();render();return;}
   if(t.dataset.newrole){S.newRole=t.value;S.newDraft={nn:val("nn"),nu:val("nu"),np:$("#np").value};render();return;}
   if(t.dataset.mdro){S.mdroF[t.dataset.mdro]=t.value;render();return;}
   if(t.dataset.restore&&t.files[0]&&isTeam()){restore(t.files[0],t.dataset.restore);t.value="";return;}
@@ -3821,7 +3827,7 @@ function exportAllXlsx(){
   sh.push(["Patients",["Unit","Bed","MRN / PIN","ID type","ID number","Name","Last name","First name","Sex","Date of birth","Nationality","Admission","Diagnosis","Status","Added by"],
     S.patients.map(p=>[p.unit,p.bed,p.mrn,p.idType||(p.idNo?"National ID or Iqama":""),p.idNo||"",p.name,p.lastName||"",p.firstName||"",p.sex||"",fd(p.dob),p.nationality||"",fd(p.admitDate),p.diagnosis||"",p.status||"",p.by||""])]);
   sh.push(["Devices",["Unit","Bed","MRN / PIN","Patient","Device","Catheter type","Permanent or temporary","Site","Route","Size","Birth weight","Inserted at","Inserted","Removed","Insertion observed","Insertion bundle","Device days","Daily checks","Fully compliant checks","Unit manager signed"],
-    S.devices.map(d=>{const m=DEV[d.type]||{name:d.type,ins:[]},ins=m.ins.filter(i=>d.insItems?.[i.k]);return[...ptCols(d.patientId),m.name,d.clType||"",d.clDuration||"",d.clSite||"",d.route||"",d.size||"",d.birthWt||"",d.place||"",fd(d.insertDate),fd(d.removed),d.insObserved||"",
+    S.devices.map(d=>{const m=DEV[d.type]||{name:d.type,ins:[]},ins=m.ins.filter(i=>d.insItems?.[i.k]);return[...ptCols(d.patientId),m.name,d.clType||"",d.clDuration||"",d.clSite||"",d.route||"",d.size||"",d.birthWt||"",d.place||"",fd(d.insertDate)+(d.insertUnknown?" (unknown, from admission)":""),fd(d.removed),d.insObserved||"",
       ins.map(i=>`${i.n||""} ${i.t.slice(0,40)}: ${YN[d.insItems[i.k]]}`).join(" | "),dayDiff(d.insertDate,d.removed||today())+1,d.checks.length,d.checks.filter(checkOk).length,(d.signoffs||[]).map(x=>`${x.name} ${fmt(x.date)}`).join("; ")];})]);
   {const rows=[];S.devices.forEach(d=>{const m=DEV[d.type];if(!m)return;d.checks.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(c=>rows.push([...ptCols(d.patientId),m.name,fd(d.insertDate),fd(c.date),devDay(d,c.date),...m.maint.map(i=>YN[c.items?.[i.k]]||""),
      m.maint.filter(i=>c.items?.[i.k]==="n").map(i=>withWhy(i,c)).join(" | "),checkOk(c)?"Compliant":"Not compliant",c.by||"",c.note||""]));});
