@@ -66,7 +66,7 @@ function render(){
   <div class="card"><h2>Patient</h2><div class="row">
     ${field("pm","Patient file number (MRN)","mrn",{attrs:'inputmode="numeric" maxlength="7"',hint:"7 digits, starts with 6"})}
     ${field("pn","Patient name","name",{attrs:'maxlength="100"'})}</div><div class="row">
-    ${field("pp","Patient mobile number","mobile",{attrs:'inputmode="tel" maxlength="16" dir="ltr"',hint:"05XXXXXXXX, or an international number starting with +"})}
+    ${field("pp","Patient mobile number","mobile",{attrs:'inputmode="numeric" maxlength="10" dir="ltr" placeholder="05XXXXXXXX"',hint:"10 digits, starts with 0"})}
     ${sel("pl","Patient location","locUnit",LOCS)}</div>
     ${NEED_ROOM.includes(F.locUnit)?`<div class="row">${field("pr","Room number","room",{attrs:'maxlength="10" inputmode="numeric"',hint:`Required for ${F.locUnit}`})}</div>`:""}</div>
   <div class="card"><h2>Disease</h2>
@@ -81,7 +81,7 @@ function render(){
   <input class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" data-k="website" value="">
   ${err?`<div class="err" role="alert">${err}</div>`:""}
   <button class="btn" id="send" ${busy?"disabled":""}>${busy?"Sending…":"Send notification"}</button>`;
-  document.querySelectorAll("[data-k]").forEach(el=>{el.oninput=el.onchange=()=>{let v=el.value;if(["empId","mrn","mobile"].includes(el.dataset.k)){v=en(v).replace(el.dataset.k==="mobile"?/[^\d+]/g:/\D/g,"");if(v!==el.value)el.value=v;}F[el.dataset.k]=v;if(bad.includes(el.dataset.k)){bad=bad.filter(k=>k!==el.dataset.k);el.classList.remove("bad");if(!bad.length){err="";document.querySelector(".err")?.remove();}}if(el.tagName==="SELECT")render();};});
+  document.querySelectorAll("[data-k]").forEach(el=>{el.oninput=el.onchange=()=>{let v=el.value;if(["empId","mrn","mobile"].includes(el.dataset.k)){v=en(v).replace(/\D/g,"");if(v!==el.value)el.value=v;}F[el.dataset.k]=v;if(bad.includes(el.dataset.k)){bad=bad.filter(k=>k!==el.dataset.k);el.classList.remove("bad");if(!bad.length){err="";document.querySelector(".err")?.remove();}}if(el.tagName==="SELECT")render();};});
   document.querySelectorAll("[data-st]").forEach(b=>b.onclick=()=>{F.status=b.dataset.st;bad=bad.filter(k=>k!=="status");if(!bad.length)err="";render();});
   document.querySelectorAll("[data-iso]").forEach(b=>b.onclick=()=>{const v=b.dataset.iso;F.isolation=F.isolation.includes(v)?F.isolation.filter(x=>x!==v):[...F.isolation,v];if(F.isolation.length)bad=bad.filter(k=>k!=="isolation");if(!bad.length)err="";render();});
   $("#send").onclick=send;
@@ -92,7 +92,7 @@ function check(){
   if(!/^\d{8}$/.test(t("empId")))bad.push("empId");
   if(!/^6\d{6}$/.test(t("mrn")))bad.push("mrn");
   if(t("name").length<2)bad.push("name");
-  if(!/^(05\d{8}|\+\d{8,15})$/.test(t("mobile")))bad.push("mobile");
+  if(!/^0\d{9}$/.test(t("mobile")))bad.push("mobile");
   if(!DEPTS.includes(F.reporterDept))bad.push("reporterDept");
   if(!LOCS.includes(F.locUnit))bad.push("locUnit");
   if(NEED_ROOM.includes(F.locUnit)&&!t("room"))bad.push("room");
@@ -102,7 +102,7 @@ function check(){
   if(F.disease.startsWith("Other")&&t("diseaseOther").length<2)bad.push("diseaseOther");
   if(!F.isolation.length)bad.push("isolation");
   if(t("history").length<3)bad.push("history");
-  const names={reporter:"your full name",empId:"your 8-digit employee number",reporterDept:"your department",locUnit:"the patient location",room:"the room number",mrn:"the patient file number (7 digits starting with 6)",name:"the patient name",mobile:"the patient mobile number",status:"suspected or confirmed",date:"the date",disease:"the disease",diseaseOther:"the disease name",isolation:"the current isolation",history:"a brief history"};
+  const names={reporter:"your full name",empId:"your 8-digit employee number",reporterDept:"your department",locUnit:"the patient location",room:"the room number",mrn:"the patient file number (7 digits starting with 6)",name:"the patient name",mobile:"the patient mobile number (10 digits starting with 0)",status:"suspected or confirmed",date:"the date",disease:"the disease",diseaseOther:"the disease name",isolation:"the current isolation",history:"a brief history"};
   return bad.length?`Please complete: ${bad.map(k=>names[k]).join(", ")}.`:"";
 }
 async function send(){
