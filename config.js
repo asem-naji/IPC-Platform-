@@ -9,6 +9,8 @@ window.IPC_CONFIG = {
     messagingSenderId: "757580842056",
     appId: "1:757580842056:web:863d949a6ad63b9027847d"
   },
+  // Teams alert for disease notifications: the address of the notify-worker (Cloudflare Worker), when it is set up.
+  notifyRelay: "https://ipc-notify-alsobh.dr-asem-naji.workers.dev",
   // The AI assistant proxy (Cloudflare Worker), when it is set up.
   aiEndpoint: "",
   aiToken: ""
