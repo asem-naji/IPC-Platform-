@@ -340,7 +340,7 @@ const LOC={
   "Isolation rooms":{rooms:["ER isolation 1","ER isolation 2","ER isolation 3","ICU isolation 9","ICU isolation 10","ICU isolation 21","CCU isolation","Room 315","Room 317","Room 354","Room 355"]},
   "Other":{rooms:"text",areas:[]}};
 const STAFF=["Nurse","Doctor","Housekeeping","Other"];
-const APP_VERSION="23 Oct 2026 (b)";
+const APP_VERSION="23 Oct 2026 (c)";
 S_START_HASH:{try{window.__ipcHash=location.hash;}catch(_){}}
 const ROLES={team:"Master",prac:"Infection Control Practitioner",link:"Infection Control Link",unit:"Unit head (old account)"};
 const ROLE_CHOICES=["prac","link","team"];
@@ -1002,6 +1002,8 @@ function vNotify(){
       <div class="row" style="align-items:center;margin-top:6px"><div style="flex:3"><input type="text" id="ntlink" value="${esc(notifyUrl())}" readonly dir="ltr" onclick="this.select()"></div>
       <div style="flex:0 0 auto;display:flex;gap:8px"><button class="btn ghost" data-a="ntcopy">Copy link</button><a class="btn ghost" href="${esc(notifyUrl())}" target="_blank" rel="noopener">Open form</a></div></div>
       <p class="hint" style="margin-bottom:0">Anyone with the link can send a notification. They cannot see any notification or any other platform data.</p></div>
+    <div class="row" style="align-items:center;margin:6px 0 4px"><div style="flex:3"><b>${l.length}</b> ${l.length===1?"notification":"notifications"} in this list</div>
+      <div style="flex:0 0 auto"><button class="btn ghost" data-a="ntxlsx" ${l.length?"":"disabled"}>Export this list to Excel</button></div></div>
     <div class="chips" style="margin:6px 0 12px">${[["open","Open"],...NT_STATES.map(x=>[x,x]),["all","All"]].map(([v,t])=>`<button class="chip" aria-pressed="${f===v}" data-a="ntf" data-v="${v}">${t}${NT_STATES.includes(v)?` (${cnt(v)})`:""}</button>`).join("")}</div>
     ${l.length?l.map(x=>{const st=x.state||"New";return `<button class="card ntcard${st==="New"?" ntnew":""}" data-a="ntopen" data-id="${x.id}">
       <div class="ntrow"><b>${esc(ntDisease(x))}</b><span class="tag ${x.status==="Confirmed"?"no":"na"}">${esc(x.status)}</span><span class="tag ${st==="New"?"no":st==="Closed"?"ok":"na"}">${esc(st)}</span><span class="hint" style="margin-left:auto">${ntWhen(x)}</span></div>
@@ -1033,6 +1035,15 @@ function vNotifyOne(){
     <label class="f" for="ntn">Infection control note</label><textarea id="ntn" data-bind="ipcNote" rows="3">${esc(f.ipcNote||"")}</textarea>
     ${errHtml()}<div style="margin-top:14px" class="row"><div><button class="btn block" data-a="ntsave">Save follow-up</button></div>
       ${isMaster()?`<div style="flex:0 0 auto"><button class="btn ghost" data-a="ntdel">Delete</button></div>`:""}</div></div>`;
+}
+function ntList(){const f=S.ntF||"open";return S.notify.filter(x=>f==="all"||(f==="open"?(x.state||"New")!=="Closed":(x.state||"New")===f)).sort((a,b)=>(ntTime(b)||0)-(ntTime(a)||0));}
+function ntExport(){
+  const f=S.ntF||"open",l=ntList(),iso=x=>S.iso.find(i=>i.mrn===x.mrn&&!i.end);
+  const head=["Reference","Received","Disease","Suspected or confirmed","Date","Patient name","MRN / PIN","Mobile","Patient location","Isolation at report","On isolation board now","Brief history","Reported by","Employee number","Reporter department","Follow-up status","Reported to MOH on","MOH reference","IPC note","Reviewed by","Reviewed on"];
+  const rows=l.map(x=>[x.id.slice(-6).toUpperCase(),ntWhen(x),ntDisease(x),x.status,fmt(x.date),x.name,x.mrn,x.mobile,x.location||"",(x.isolation||[]).join(" + "),iso(x)?`Yes, ${(iso(x).precautions||[]).join(" + ")}`:"No",x.history,x.reporter,x.empId,x.reporterDept||"",x.state||"New",x.mohDate?fmt(x.mohDate):"",x.mohRef||"",x.ipcNote||"",x.reviewedBy||"",x.reviewedOn?fmt(x.reviewedOn):""]);
+  const lab=f==="all"?"all":f==="open"?"open":f.toLowerCase().replace(/\s+/g,"-");
+  const a=document.createElement("a");a.href=URL.createObjectURL(xlsxBlob([["Disease notifications",head,rows]]));a.download=`disease-notifications-${lab}-${today()}.xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  toast(`Excel file ready: ${rows.length} ${rows.length===1?"notification":"notifications"}`);
 }
 async function saveNotify(){
   const x=S.notify.find(y=>y.id===S.ntId),f=S.form;if(!x)return;
@@ -2963,6 +2974,7 @@ document.addEventListener("click",async e=>{
   else if(a==="backupph"&&isMaster())backup(true);
   else if(a==="xlsxall"&&isMaster())exportAllXlsx();
   else if(a==="ntf"){S.ntF=b.dataset.v;render();}
+  else if(a==="ntxlsx"&&isTeam())ntExport();
   else if(a==="ntopen"){const x=S.notify.find(y=>y.id===b.dataset.id);S.ntId=x.id;go("notifyone",{form:ntForm(x)});}
   else if(a==="ntsave"&&isTeam())saveNotify();
   else if(a==="ntcopy"){try{await navigator.clipboard.writeText(notifyUrl());toast("Link copied");}catch(_){$("#ntlink").select();toast("Select and copy the link",true);}}
