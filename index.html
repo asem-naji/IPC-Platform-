@@ -300,6 +300,17 @@ td.mid{background:#FFF1CC}
 .ver{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;background:var(--paper);color:var(--muted);font-size:.78rem}
 .rmconfirm{border-color:var(--stop);background:#FFF7F6}
 .rmask{margin:10px 0 0;color:var(--stop)}
+.ntsteps{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:6px 0 4px}
+.ntstep{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:2px;font-size:.86rem}
+.ntstep span{width:24px;height:24px;border-radius:50%;background:var(--paper);display:grid;place-items:center;font-weight:700;color:var(--muted)}
+.ntstep.ok{border-color:#A9D5BD;background:var(--go-bg)}.ntstep.ok span{background:var(--go);color:#fff}
+.ntstep small{color:var(--muted)}
+@media(max-width:760px){.ntsteps{grid-template-columns:1fr 1fr}}
+.tracts{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.tract{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;background:#fff}
+.tract input{margin-top:3px;width:18px;height:18px;flex:0 0 auto}.tract span{display:flex;flex-direction:column}.tract small{color:var(--muted)}
+.tract.ok{background:var(--go-bg);border-color:#A9D5BD}.tract.late{background:#FFF4F2;border-color:#F0B8B2}.tract.late small{color:var(--stop)}
+.trdone{opacity:.8}
 .ntcard{display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;border-left:5px solid var(--line)}
 .ntcard.ntnew{border-left-color:var(--stop);background:#FFF9F8}
 .ntrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
@@ -340,7 +351,7 @@ const LOC={
   "Isolation rooms":{rooms:["ER isolation 1","ER isolation 2","ER isolation 3","ICU isolation 9","ICU isolation 10","ICU isolation 21","CCU isolation","Room 315","Room 317","Room 354","Room 355"]},
   "Other":{rooms:"text",areas:[]}};
 const STAFF=["Nurse","Doctor","Housekeeping","Other"];
-const APP_VERSION="23 Oct 2026 (c)";
+const APP_VERSION="24 Oct 2026";
 S_START_HASH:{try{window.__ipcHash=location.hash;}catch(_){}}
 const ROLES={team:"Master",prac:"Infection Control Practitioner",link:"Infection Control Link",unit:"Unit head (old account)"};
 const ROLE_CHOICES=["prac","link","team"];
@@ -351,12 +362,12 @@ const ROLE_HELP={team:"Master: full access to everything, including managing use
 const SCREENS=[
   ["1 Plan",[["risk","Annual risk assessment"],["cbahi","CBAHI readiness"],["sched","Audit schedule"],["bench","Targets and benchmarks"]]],
   ["2 Record",[["surv","Surveillance and audits"],["round","Device care bundles"],["mdro","MDRO surveillance"],["isoboard","Isolation board"],["staffhealth","Occupational health"],["training","Training"]]],
-  ["3 Investigate",[["notify","Disease notifications"],["cases","HAI case review"],["outbreaks","Outbreaks"],["abg","Antibiogram"]]],
+  ["3 Investigate",[["notify","Disease notifications"],["traces","Contact tracing"],["cases","HAI case review"],["outbreaks","Outbreaks"],["abg","Antibiogram"]]],
   ["4 Review and report",[["overview","IPC overview"],["dash","Audit dashboard"],["bdash","Device dashboard"],["spc","Control charts"],["scorecard","Unit scorecards"],["actions","Corrective actions"],["report","Monthly report"],["records","Records"]]]];
-const PRAC_DEFAULT=["notify","surv","round","mdro","isoboard","cases","outbreaks","overview","dash","bdash","actions"];
-const MASTER_ONLY=["users","uaccess","settings","log"];
+const PRAC_DEFAULT=["notify","traces","surv","round","mdro","isoboard","cases","outbreaks","overview","dash","bdash","actions"];
+const MASTER_ONLY=["tracetpl","users","uaccess","settings","log"];
 /* which screen a view belongs to, for practitioner access */
-const SUBVIEW={notifyone:"notify",hh:"surv",ppe:"surv",waste:"surv",env:"surv",case:"cases",outbreak:"outbreaks",iso:"isoboard",expo:"staffhealth",fit:"staffhealth",train:"training",mdronew:"mdro",mdroimp:"mdro",actionNew:"actions"};
+const SUBVIEW={notifyone:"notify",trace:"traces",traceedit:"traces",tcontact:"traces",tracetpl:"traces",hh:"surv",ppe:"surv",waste:"surv",env:"surv",case:"cases",outbreak:"outbreaks",iso:"isoboard",expo:"staffhealth",fit:"staffhealth",train:"training",mdronew:"mdro",mdroimp:"mdro",actionNew:"actions"};
 const MOMENTS=[
   {n:1,short:"Before touching a patient",full:"Before touching a patient"},
   {n:2,short:"Before aseptic procedure",full:"Before clean / aseptic procedure"},
@@ -479,10 +490,10 @@ const CFG=window.IPC_CONFIG||{};
 const CLOUD=!!(CFG.firebase&&CFG.firebase.apiKey)&&!window.storage;
 const FB_VER="10.12.2";
 let fbApp=null,db=null,auth=null,unsubs=[],loaded=new Set(),rTimer=null;
-const COL={"ipc-notify":"notify","ipc-risk":"risk","ipc-outbreaks":"outbreaks","ipc-iso":"iso","ipc-expo":"expo","ipc-fit":"fit","ipc-train":"train","ipc-sched":"sched","ipc-ast":"ast","ipc-audits":"audits","ipc-actions":"actions","ipc-patients":"patients","ipc-devices":"devices","ipc-events":"events","ipc-mdro":"mdro","ipc-surg":"surg","ipc-users":"users"};
-const SKEY={"ipc-notify":"notify","ipc-risk":"risk","ipc-outbreaks":"outbreaks","ipc-iso":"iso","ipc-expo":"expo","ipc-fit":"fit","ipc-train":"train","ipc-sched":"sched","ipc-ast":"ast","ipc-cbahi":"cbahi","ipc-audits":"audits","ipc-actions":"actions","ipc-patients":"patients","ipc-devices":"devices","ipc-events":"events","ipc-mdro":"mdro","ipc-surg":"surg","ipc-users":"users",
+const COL={"ipc-trace":"trace","ipc-notify":"notify","ipc-risk":"risk","ipc-outbreaks":"outbreaks","ipc-iso":"iso","ipc-expo":"expo","ipc-fit":"fit","ipc-train":"train","ipc-sched":"sched","ipc-ast":"ast","ipc-audits":"audits","ipc-actions":"actions","ipc-patients":"patients","ipc-devices":"devices","ipc-events":"events","ipc-mdro":"mdro","ipc-surg":"surg","ipc-users":"users"};
+const SKEY={"ipc-trace":"trace","ipc-tracetpl":"traceTpl","ipc-notify":"notify","ipc-risk":"risk","ipc-outbreaks":"outbreaks","ipc-iso":"iso","ipc-expo":"expo","ipc-fit":"fit","ipc-train":"train","ipc-sched":"sched","ipc-ast":"ast","ipc-cbahi":"cbahi","ipc-audits":"audits","ipc-actions":"actions","ipc-patients":"patients","ipc-devices":"devices","ipc-events":"events","ipc-mdro":"mdro","ipc-surg":"surg","ipc-users":"users",
   "ipc-targets":"targets","ipc-bench":"bench","ipc-envcustom":"envCustom","ipc-census":"census","ipc-settings":"settings"};
-const CONF={"ipc-cbahi":"cbahi","ipc-targets":"targets","ipc-bench":"bench","ipc-envcustom":"envCustom","ipc-census":"census","ipc-settings":"settings"};
+const CONF={"ipc-tracetpl":"traceTpl","ipc-cbahi":"cbahi","ipc-targets":"targets","ipc-bench":"bench","ipc-envcustom":"envCustom","ipc-census":"census","ipc-settings":"settings"};
 const CSNAP={};
 const clean=x=>JSON.parse(JSON.stringify(x??null));
 const photoDoc=k=>{const m=k.match(/^ipc-photo:(.+):(\d+)$/);return m?`${m[1]}__${m[2]}`:k.replace(/^ipc-photo:/,"").replace(/[\/]/g,"_");};
@@ -509,7 +520,7 @@ async function cloudGet(k){
 }
 function cloudLog(entries){entries.forEach(x=>db.collection("log").add(clean({...x,uid:auth.currentUser?.uid||""})).catch(()=>{}));}
 async function fetchLog(){if(!isTeam())return;try{const q=await db.collection("log").orderBy("ts","desc").limit(1000).get();S.log=q.docs.map(d=>d.data()).reverse();render();}catch(e){cloudErr(e);}}
-const FORM_VIEWS=["notifyone","hh","ppe","waste","env","ptform","devnew","check","culture","adh","dischg","surg","mdronew","mdroimp","actionNew","case","bench","uaccess","changepw","settings","users","login","setup"];
+const FORM_VIEWS=["traceedit","tcontact","tracetpl","notifyone","hh","ppe","waste","env","ptform","devnew","check","culture","adh","dischg","surg","mdronew","mdroimp","actionNew","case","bench","uaccess","changepw","settings","users","login","setup"];
 function scheduleRender(){clearTimeout(rTimer);rTimer=setTimeout(()=>{if(!FORM_VIEWS.includes(S.view))render();},150);}
 function applyServer(key,arr){
   if(key==="ipc-users"){CSNAP[key]=Object.fromEntries(arr.map(p=>[p.uid,JSON.stringify(clean(p))]));S.removedUsers=arr.filter(p=>p.active===false).map(profileToUser);arr=arr.filter(p=>p.active!==false).map(profileToUser);}
@@ -523,7 +534,7 @@ function listen(){
   const team=isTeam();
   const uidv=auth.currentUser.uid,role=S.user.role,depts=S.user.perms?.depts||[];
   if(team){on("ipc-audits",db.collection("audits"));on("ipc-actions",db.collection("actions"));on("ipc-mdro",db.collection("mdro"));on("ipc-users",db.collection("users"));
-    ["ipc-notify","ipc-risk","ipc-outbreaks","ipc-iso","ipc-expo","ipc-fit","ipc-train","ipc-sched","ipc-ast"].forEach(k=>on(k,db.collection(COL[k])));}
+    ["ipc-trace","ipc-notify","ipc-risk","ipc-outbreaks","ipc-iso","ipc-expo","ipc-fit","ipc-train","ipc-sched","ipc-ast"].forEach(k=>on(k,db.collection(COL[k])));}
   else if(role==="unit"&&depts.length){on("ipc-audits",db.collection("audits").where("dept","in",depts.slice(0,30)));on("ipc-actions",db.collection("actions").where("dept","in",depts.slice(0,30)));
     on("ipc-patients",db.collection("patients").where("unit","in",depts.slice(0,30)));on("ipc-devices",db.collection("devices"));on("ipc-events",db.collection("events"));on("ipc-surg",db.collection("surg"));}
   else{on("ipc-audits",db.collection("audits").where("auditorUser","==",uidv));on("ipc-sched",db.collection("sched").where("assignee","==",uidv));}
@@ -606,7 +617,7 @@ async function cloudChangePw(){
 }
 
 /* ================= Activity log ================= */
-const TRACK={"ipc-notify":"Disease notification","ipc-risk":"Risk assessment","ipc-outbreaks":"Outbreak","ipc-iso":"Isolation episode","ipc-expo":"Occupational exposure","ipc-fit":"Fit test","ipc-train":"Training session","ipc-sched":"Audit assignment","ipc-ast":"Susceptibility result","ipc-audits":"Audit entry","ipc-actions":"Corrective action","ipc-patients":"Patient","ipc-devices":"Device","ipc-events":"Culture",
+const TRACK={"ipc-trace":"Contact tracing","ipc-notify":"Disease notification","ipc-risk":"Risk assessment","ipc-outbreaks":"Outbreak","ipc-iso":"Isolation episode","ipc-expo":"Occupational exposure","ipc-fit":"Fit test","ipc-train":"Training session","ipc-sched":"Audit assignment","ipc-ast":"Susceptibility result","ipc-audits":"Audit entry","ipc-actions":"Corrective action","ipc-patients":"Patient","ipc-devices":"Device","ipc-events":"Culture",
   "ipc-users":"User account","ipc-mdro":"MDRO case","ipc-surg":"Surgical procedure"};
 const SNAP={};
 const snapOf=v=>Object.fromEntries((Array.isArray(v)?v:[]).map(x=>[x.id||x.username,JSON.stringify(x)]));
@@ -626,6 +637,7 @@ function logLabel(k,x){
     case "ipc-fit":return `${x.staffName}, ${x.model}, ${fmt(x.date)}`;
     case "ipc-train":return `${x.topic}, ${x.dept}, ${fmt(x.date)}`;
     case "ipc-notify":return `${ntDisease(x)}, ${x.name}, MRN ${x.mrn}`;
+    case "ipc-trace":return `${trIndex(x).disease||"Contact tracing"}, ${(x.contacts||[]).length} contacts`;
     case "ipc-sched":return `${MODULES[x.module]?.name||x.module}, ${x.dept}, week of ${fmt(x.week)}`;
     case "ipc-ast":return `${x.organism}, ${fmt(x.date)}`;
     case "ipc-risk":return `Risk assessment ${x.year}`;
@@ -661,7 +673,7 @@ const newSalt=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
 /* ================= State ================= */
-const S={startHash:window.__ipcHash||"",users:[],user:null,audits:[],actions:[],targets:{},bench:[],envCustom:{},log:[],settings:{},mdro:[],census:{},surg:[],cbahi:{},risk:[],outbreaks:[],iso:[],expo:[],fit:[],train:[],notify:[],sched:[],ast:[],patients:[],devices:[],events:[],round:{unit:"ICU",dis:false},bd:{unit:"all",period:"90"},pid:null,did:null,eid:null,view:"boot",module:null,form:{},session:{n:0,ok:0},
+const S={startHash:window.__ipcHash||"",users:[],user:null,audits:[],actions:[],targets:{},bench:[],envCustom:{},log:[],settings:{},mdro:[],census:{},surg:[],cbahi:{},risk:[],outbreaks:[],iso:[],expo:[],fit:[],train:[],notify:[],trace:[],traceTpl:{},sched:[],ast:[],patients:[],devices:[],events:[],round:{unit:"ICU",dis:false},bd:{unit:"all",period:"90"},pid:null,did:null,eid:null,view:"boot",module:null,form:{},session:{n:0,ok:0},
   filter:{type:"all",dept:"all"},dash:{dept:"all",period:"90"},actFilter:"open",actionDraft:null,error:"",modal:null};
 const $=s=>document.querySelector(s);
 /* English digits everywhere: ٠١٢٣٤٥٦٧٨٩ and ۰۱۲۳۴۵۶۷۸۹ become 0-9 */
@@ -677,7 +689,7 @@ const isPrac=()=>S.user&&S.user.role==="prac";
 const screenKey=v=>BUNDLE_VIEWS.includes(v)?"round":SUBVIEW[v]||v;
 const SCREEN_KEYS=SCREENS.flatMap(g=>g[1].map(x=>x[0]));
 const canScreen=k=>!isPrac()||!SCREEN_KEYS.includes(k)||!!S.user.perms?.screens?.includes(k);
-const TEAM_ONLY=["notify","notifyone","overview","risk","cbahi","spc","outbreaks","outbreak","isoboard","iso","staffhealth","expo","fit","training","train","abg","sched","mdro","mdronew","mdroimp","report","settings","log","records","users","uaccess","dash","actions","actionNew","cases","case","bdash","bench"];
+const TEAM_ONLY=["traces","trace","traceedit","tcontact","tracetpl","notify","notifyone","overview","risk","cbahi","spc","outbreaks","outbreak","isoboard","iso","staffhealth","expo","fit","training","train","abg","sched","mdro","mdronew","mdroimp","report","settings","log","records","users","uaccess","dash","actions","actionNew","cases","case","bdash","bench"];
 const BUNDLE_VIEWS=["signoff","crrsins","crrsmnt","surg","round","ptform","patient","devnew","device","check","culture","dischg","adh"];
 /* what an Infection Control Link user may enter; empty depts means every department */
 const ACCESS=[["hh","Hand Hygiene"],["ppe","PPE Compliance"],["waste","Waste Management"],["env","Environmental Cleaning"],["bundles","Device care bundles (patients, daily checks, cultures)"]];
@@ -758,7 +770,7 @@ function go(view,extra={}){
   const from=S.view,isBack=extra.__back;delete extra.__back;
   if(!isBack&&from&&from!==view&&S.user&&!["login","setup"].includes(from)){
     /* remember where we came from; form screens are skipped on the way back so a saved form is never reopened */
-    (S.hist=S.hist||[]).push({view:from,pid:S.pid,did:S.did,ntId:S.ntId,isForm:!!S.histForm&&from!=="notifyone"});
+    (S.hist=S.hist||[]).push({view:from,pid:S.pid,did:S.did,ntId:S.ntId,trId:S.trId,isForm:!!S.histForm&&!["notifyone","trace"].includes(from)});
     if(S.hist.length>40)S.hist.shift();
     try{history.pushState({ipc:S.hist.length},"");}catch(_){}
   }
@@ -772,6 +784,7 @@ function goBack(){
   const h=S.hist||[];let t;
   while((t=h.pop())&&(t.isForm||(t.view===S.view&&t.pid===S.pid&&t.did===S.did)));
   if(!t){go("home",{__back:true});return;}
+  if(t.view==="trace"&&t.trId){S.trId=t.trId;go("trace",{form:{},__back:true});return;}
   if(t.view==="notifyone"){const x=S.notify.find(y=>y.id===t.ntId);if(x){S.ntId=x.id;go("notifyone",{form:ntForm(x),__back:true});return;}}
   go(t.view,{pid:t.pid,did:t.did,__back:true});
 }
@@ -984,8 +997,176 @@ function vOverview(){
       ${dep==="all"?`<section class="ovpanel wide2"><h2>Hand hygiene by department</h2><p class="hint">Lowest first, ${lab}</p>${ovBars(depRows,{legend:true})}</section>`:""}
     </div></div>`;
 }
+const DISEASE_LIST=["MERS-CoV","COVID-19","Influenza","Tuberculosis, pulmonary","Tuberculosis, extrapulmonary","Measles","Varicella (chickenpox)","Mumps","Rubella","Pertussis","Diphtheria","Meningococcal disease","Bacterial meningitis, other","Hepatitis A","Hepatitis B","Hepatitis C","Hepatitis E","HIV","Brucellosis","Dengue fever","Malaria","Typhoid or paratyphoid","Cholera","Food poisoning","Shigellosis","Leishmaniasis","Scabies","Mpox","Viral haemorrhagic fever","Acute flaccid paralysis","Tetanus","Legionellosis","Rabies or animal bite","Syphilis","Gonorrhoea","Other"];
+/* ================= Contact tracing: one file per index case, opened from a notification, an outbreak or Occupational health ================= */
+/* DRAFT templates: confirm against hospital policy and MOH guidance. need: yes = usually required, no = usually not, consider = case by case.
+   Each action: [day after last exposure when it is due, what to do]. Editable in Contact tracing > Templates. */
+const TRACE_DEFAULT={
+  "Tuberculosis, pulmonary":{need:"yes",actions:[[0,"Symptom screen: cough, fever, night sweats, weight loss"],[0,"Baseline IGRA or TST"],[56,"Repeat IGRA or TST 8 to 10 weeks after last exposure"],[56,"Chest X-ray if the test converts or symptoms appear"]]},
+  "Tuberculosis, extrapulmonary":{need:"no",why:"Not usually infectious unless pulmonary or a draining lesion"},
+  "Measles":{need:"yes",actions:[[0,"Check measles immunity: 2 documented MMR doses or positive IgG"],[3,"MMR within 72 hours for non-immune contacts"],[6,"Immunoglobulin within 6 days for non-immune high-risk contacts (pregnant, immunocompromised, infants)"],[5,"Non-immune staff off work from day 5 to day 21 after exposure"],[21,"Symptom monitoring until day 21"]]},
+  "Varicella (chickenpox)":{need:"yes",actions:[[0,"Check varicella immunity: history, 2 vaccine doses or positive IgG"],[3,"Varicella vaccine within 3 to 5 days for non-immune contacts"],[10,"VariZIG within 10 days for non-immune high-risk contacts"],[8,"Non-immune staff off work from day 8 to day 21 (day 28 if VariZIG given)"],[21,"Symptom monitoring until day 21"]]},
+  "MERS-CoV":{need:"yes",actions:[[0,"Classify the exposure: PPE used, aerosol-generating procedure, duration"],[0,"Daily symptom and temperature monitoring for 14 days"],[0,"Work restriction for high-risk staff exposures as per MOH guidance"],[0,"Nasopharyngeal PCR if symptoms develop"],[14,"End of monitoring on day 14"]]},
+  "COVID-19":{need:"consider",actions:[[0,"Symptom monitoring as per hospital policy"],[0,"Test if symptoms develop"]]},
+  "Influenza":{need:"consider",actions:[[0,"Antiviral prophylaxis for high-risk contacts, as decided by the physician"],[7,"Symptom monitoring for 7 days"]]},
+  "Meningococcal disease":{need:"yes",actions:[[0,"Confirm close contact: household-type contact or unprotected exposure to airway secretions (e.g. intubation, suction)"],[1,"Chemoprophylaxis within 24 hours, as decided by the physician"],[10,"Symptom monitoring for 10 days"]]},
+  "Bacterial meningitis, other":{need:"consider",actions:[[0,"Confirm the organism: prophylaxis only if indicated"]]},
+  "Pertussis":{need:"yes",actions:[[0,"Antibiotic post-exposure prophylaxis for close contacts, as decided by the physician"],[0,"Check staff Tdap status"],[21,"Symptom monitoring for 21 days"]]},
+  "Diphtheria":{need:"yes",actions:[[0,"Throat and nasal swabs for culture"],[0,"Antibiotic prophylaxis, as decided by the physician"],[0,"Check and update diphtheria vaccination"],[7,"Symptom monitoring for 7 days"]]},
+  "Mumps":{need:"consider",actions:[[0,"Check MMR status"],[12,"Non-immune staff off work from day 12 to day 25"],[25,"Symptom monitoring until day 25"]]},
+  "Rubella":{need:"consider",actions:[[0,"Check rubella immunity, especially pregnant contacts"],[7,"Non-immune staff off work from day 7 to day 21"],[21,"Symptom monitoring until day 21"]]},
+  "Scabies":{need:"yes",actions:[[0,"Examine contacts for rash and itching"],[0,"Treat close contacts at the same time as the case"],[42,"Review for symptoms up to 6 weeks"]]},
+  "Mpox":{need:"yes",actions:[[0,"Classify the exposure"],[4,"Vaccine within 4 days if indicated"],[21,"Symptom monitoring for 21 days"]]},
+  "Viral haemorrhagic fever":{need:"yes",actions:[[0,"Classify the exposure risk"],[21,"Temperature and symptom monitoring for 21 days"]]},
+  "Hepatitis A":{need:"consider",actions:[[14,"Vaccine or immunoglobulin within 2 weeks for close contacts"]]},
+  "Hepatitis B":{need:"no",why:"Blood or body fluid exposure: record a staff exposure and give PEP in Occupational health"},
+  "Hepatitis C":{need:"no",why:"Blood exposure: record a staff exposure in Occupational health"},
+  "HIV":{need:"no",why:"Blood or body fluid exposure: record a staff exposure and give PEP in Occupational health"},
+  "Syphilis":{need:"no",why:"Not spread by usual hospital contact"},
+  "Gonorrhoea":{need:"no",why:"Not spread by usual hospital contact"},
+  "Hepatitis E":{need:"no",why:"Not usually spread person to person in hospital"},
+  "Brucellosis":{need:"no",why:"Not spread person to person"},
+  "Dengue fever":{need:"no",why:"Spread by mosquitoes, not person to person"},
+  "Malaria":{need:"no",why:"Spread by mosquitoes, not person to person"},
+  "Leishmaniasis":{need:"no",why:"Spread by sandflies, not person to person"},
+  "Rabies or animal bite":{need:"no",why:"Not spread person to person in hospital"},
+  "Tetanus":{need:"no",why:"Not spread person to person"},
+  "Legionellosis":{need:"no",why:"Environmental source: investigate the water system, not contacts"},
+  "Typhoid or paratyphoid":{need:"no",why:"Food or water borne: investigate as a cluster if more cases"},
+  "Cholera":{need:"no",why:"Food or water borne: investigate as a cluster if more cases"},
+  "Food poisoning":{need:"no",why:"Investigate as a cluster in Outbreaks if more cases"},
+  "Shigellosis":{need:"no",why:"Food or water borne: investigate as a cluster if more cases"},
+  "Acute flaccid paralysis":{need:"no",why:"Report to MOH for polio surveillance"}};
+const TRACE_GENERIC={need:"consider",actions:[[0,"Define the exposure and confirm who are contacts"],[0,"Action as decided by the physician"]]};
+const traceTpl=d=>({...(TRACE_DEFAULT[d]||TRACE_GENERIC),...((S.traceTpl||{})[d]||{})});
+const NEED_LABEL={yes:"Usually required",no:"Usually not required",consider:"Decide case by case"};
+const T_KINDS=["Staff","Patient","Visitor"],T_CLOSE=["Close","Casual"],T_PROT=["Yes","No","Unknown"];
+const T_OUT=["Cleared","Converted or positive","Became a case","Lost to follow-up","Not a contact"];
+const tRisk=c=>c.closeness==="Close"&&c.protected!=="Yes"?"High":c.closeness==="Close"?"Medium":"Low";
+const tDue=(c,a)=>addDays(c.lastDate||c.date||today(),+a.day||0);
+const tOpenActs=c=>(c.actions||[]).filter(a=>!a.done);
+const tOverdue=c=>c.outcome?[]:tOpenActs(c).filter(a=>tDue(c,a)<today());
+const trOf=id=>S.trace.find(t=>t.id===id);
+const trIndex=t=>{const n=t.notifyId&&S.notify.find(x=>x.id===t.notifyId);return n?{disease:ntDisease(n),name:n.name,mrn:n.mrn,location:n.location||"",date:n.date}:{disease:t.disease||"",name:t.indexName||"",mrn:t.indexMrn||"",location:t.indexLocation||"",date:t.indexDate||""};};
+const trDone=t=>(t.contacts||[]).length>0&&t.contacts.every(c=>c.outcome);
+const trOverdueCount=()=>S.trace.filter(t=>t.status!=="Closed").reduce((a,t)=>a+(t.contacts||[]).reduce((b,c)=>b+tOverdue(c).length,0),0);
+function newTrace(extra){const t={id:uid(),status:"Open",created:today(),by:S.user.name,contacts:[],...extra};return t;}
+async function openTraceFor(kind,id){
+  let t=S.trace.find(x=>kind==="notify"?x.notifyId===id:x.obId===id);
+  if(!t){
+    if(kind==="notify"){const n=S.notify.find(x=>x.id===id);t=newTrace({notifyId:id,disease:ntDisease(n),expFrom:n.date,expTo:n.date});}
+    else{const o=S.outbreaks.find(x=>x.id===id);t=newTrace({obId:id,disease:o.organism||"",indexName:o.name,indexLocation:o.unit,indexDate:o.start,expFrom:o.start,expTo:today()});}
+    await saveRec("ipc-trace",S.trace,t);toast("Contact tracing file opened");
+  }
+  S.trId=t.id;go("trace",{form:{}});
+}
+function traceListHtml(){
+  const f=S.trF||"open",l=S.trace.filter(t=>f==="all"||(f==="open"?t.status!=="Closed":t.status==="Closed")).sort((a,b)=>(b.created||"").localeCompare(a.created||""));
+  return `<div class="row" style="align-items:center;margin-top:14px"><div style="flex:3" class="chips">${[["open","Open"],["closed","Closed"],["all","All"]].map(([v,t])=>`<button class="chip" aria-pressed="${f===v}" data-a="trf" data-v="${v}">${t}</button>`).join("")}</div>
+    <div style="flex:0 0 auto;display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" data-a="trnew">Start without a notification</button>${isMaster()?`<button class="btn ghost" data-a="nav" data-v="tracetpl">Templates</button>`:""}</div></div>
+    ${l.length?l.map(t=>{const ix=trIndex(t),cs=t.contacts||[],od=cs.reduce((a,c)=>a+tOverdue(c).length,0),hi=cs.filter(c=>tRisk(c)==="High"&&!c.outcome).length;
+      return `<button class="card ntcard${od?" ntnew":""}" data-a="tropen" data-id="${t.id}"><div class="ntrow"><b>${esc(ix.disease||"Disease not set")}</b><span class="tag ${t.status==="Closed"?"ok":"mid"}">${t.status}</span>${od?`<span class="tag no">${od} overdue</span>`:""}${hi?`<span class="tag no">${hi} high risk open</span>`:""}<span class="hint" style="margin-left:auto">opened ${fmt(t.created)}</span></div>
+        <div>Index: ${esc(ix.name||"–")}${ix.mrn?`, MRN ${esc(ix.mrn)}`:""}${ix.location?`, ${esc(ix.location)}`:""}</div>
+        <div class="hint">${cs.length} ${cs.length===1?"contact":"contacts"}, ${cs.filter(c=>c.outcome).length} closed. ${t.notifyId?"From a disease notification.":t.obId?"From an outbreak.":"Started directly."}</div></button>`;}).join("")
+    :`<div class="card" style="margin-top:12px">No contact tracing files in this list. Files open from a disease notification, an outbreak, or with the button above.</div>`}`;
+}
+function vTraces(){return `<div class="wrap wide">${crumb("Contact tracing")}<h1>Contact tracing</h1>
+  <p class="lead">One file per index case. The same file opens from the disease notification, the outbreak, and here.</p>${traceListHtml()}</div>`;}
+function vTrace(){
+  const t=trOf(S.trId);if(!t)return vTraces();
+  const ix=trIndex(t),tp=traceTpl(ix.disease),cs=(t.contacts||[]).slice().sort((a,b)=>(a.outcome?1:0)-(b.outcome?1:0)||({High:0,Medium:1,Low:2}[tRisk(a)]-{High:0,Medium:1,Low:2}[tRisk(b)]));
+  const n=t.notifyId&&S.notify.find(x=>x.id===t.notifyId),o=t.obId&&S.outbreaks.find(x=>x.id===t.obId);
+  return `<div class="wrap wide">${crumb("Contact tracing file",`<span>/</span><button data-a="nav" data-v="traces">Contact tracing</button>`)}
+    <h1>${esc(ix.disease||"Contact tracing")} <span class="tag ${t.status==="Closed"?"ok":"mid"}" style="vertical-align:middle">${t.status}</span></h1>
+    <div class="card"><table class="kv"><tbody>
+      <tr><th>Index case</th><td>${esc(ix.name||"–")}${ix.mrn?`, MRN ${esc(ix.mrn)}`:""}</td></tr>
+      ${ix.location?`<tr><th>Location</th><td>${esc(ix.location)}</td></tr>`:""}
+      <tr><th>Exposure period</th><td>${t.expFrom?fmt(t.expFrom):"–"} to ${t.expTo?fmt(t.expTo):"–"} <button class="link-btn" data-a="tredit">Change</button></td></tr>
+      <tr><th>Linked to</th><td>${n?`<button class="link-btn" data-a="ntopen" data-id="${n.id}">Disease notification ${esc(n.id.slice(-6).toUpperCase())}</button>`:o?`<button class="link-btn" data-a="obopen" data-id="${o.id}">Outbreak: ${esc(o.name)}</button>`:"Started directly"}</td></tr>
+      <tr><th>Template</th><td>${NEED_LABEL[tp.need]}. ${(tp.actions||[]).length} actions added to each new contact. <span class="hint">Draft: confirm with hospital policy.</span></td></tr>
+    </tbody></table></div>
+    <div class="row" style="align-items:center;margin-top:14px"><div style="flex:3"><h2 style="margin:0">Contacts (${cs.length})</h2></div>
+      <div style="flex:0 0 auto;display:flex;gap:8px;flex-wrap:wrap">${t.status!=="Closed"?`<button class="btn" data-a="trcnew">Add a contact</button>`:""}<button class="btn ghost" data-a="trxlsx" ${cs.length?"":"disabled"}>Export to Excel</button></div></div>
+    ${cs.length?cs.map(c=>{const r=tRisk(c),od=tOverdue(c);return `<div class="card trc${c.outcome?" trdone":""}" style="border-left:5px solid ${c.outcome?"var(--go)":r==="High"?"var(--stop)":r==="Medium"?"#C98A00":"var(--line)"}">
+      <div class="ntrow"><b>${esc(c.name)}</b><span class="tag na">${esc(c.kind)}</span><span class="tag ${r==="High"?"no":r==="Medium"?"mid":"na"}">${r} risk</span>${c.outcome?`<span class="tag ok">${esc(c.outcome)}</span>`:od.length?`<span class="tag no">${od.length} overdue</span>`:""}
+        <span style="margin-left:auto"><button class="link-btn" data-a="trcedit" data-id="${c.id}">Edit</button></span></div>
+      <div class="hint">${c.idNo?`${c.kind==="Patient"?"MRN":c.kind==="Staff"?"Employee":"ID"} ${esc(c.idNo)}. `:""}${c.dept?esc(c.dept)+". ":""}${esc(c.closeness)} contact, PPE ${c.protected==="Yes"?"used":c.protected==="No"?"not used":"unknown"}. Last exposure ${fmt(c.lastDate)}.${c.mobile?` Mobile ${esc(c.mobile)}.`:""}</div>
+      <div class="tracts">${(c.actions||[]).map(a=>{const due=tDue(c,a),late=!a.done&&!c.outcome&&due<today();return `<label class="tract${a.done?" ok":late?" late":""}"><input type="checkbox" data-tract="${c.id}|${a.id}" ${a.done?"checked":""} ${t.status==="Closed"?"disabled":""}>
+        <span><b>${esc(a.t)}</b><small>${a.done?`Done ${fmt(a.date)}${a.result?`: ${esc(a.result)}`:""}`:`Due ${fmt(due)}${late?" (overdue)":""}`}</small></span></label>`;}).join("")||`<p class="hint">No actions. Edit the contact to add one.</p>`}</div>
+      ${c.note?`<p class="hint" style="margin:6px 0 0">${esc(c.note)}</p>`:""}</div>`;}).join("")
+      :`<div class="card">No contacts yet. Add everyone who was exposed: staff, patients and visitors.</div>`}
+    <h2>Close the file</h2>
+    <div class="card">${t.status==="Closed"?`Closed ${fmt(t.closed)} by ${esc(t.closedBy||"")}. <button class="btn ghost small" data-a="trreopen">Reopen</button>`
+      :trDone(t)?`All contacts have an outcome. <button class="btn" data-a="trclose">Close contact tracing</button>`
+      :`The file closes when every contact has an outcome (${cs.filter(c=>c.outcome).length} of ${cs.length} done).`}</div></div>`;
+}
+function vTraceEdit(){const t=trOf(S.trId),f=S.form,ix=trIndex(t);
+  return `<div class="wrap">${crumb("Exposure period",`<span>/</span><button data-a="tropen" data-id="${t.id}">Contact tracing file</button>`)}<h1>Index case and exposure period</h1>
+    ${t.notifyId?`<p class="lead">${esc(ix.disease)}: ${esc(ix.name)}, MRN ${esc(ix.mrn)}. The index details come from the notification.</p>`
+      :`<div class="row"><div>${selRow("tr1","Disease","disease",[...DISEASE_LIST],f)}</div><div>${inputRow("tr2","Index case name","indexName",f)}</div><div>${inputRow("tr3","Index MRN","indexMrn",f,"text",'inputmode="numeric" maxlength="7"')}</div></div>
+       <div class="row"><div>${inputRow("tr4","Index location","indexLocation",f)}</div><div>${inputRow("tr5","Index date","indexDate",f,"date",`max="${today()}"`)}</div></div>`}
+    <div class="row"><div>${inputRow("tr6","Exposure from","expFrom",f,"date",`max="${today()}"`)}</div><div>${inputRow("tr7","Exposure to","expTo",f,"date",`max="${today()}"`)}</div></div>
+    <p class="hint">The period when the index case was infectious in the hospital without the right precautions.</p>
+    ${errHtml()}<div style="margin-top:16px"><button class="btn block" data-a="trsave">Save</button></div></div>`;}
+function vTraceContact(){const t=trOf(S.trId),f=S.form;
+  return `<div class="wrap">${crumb(f.id?"Edit contact":"Add a contact",`<span>/</span><button data-a="tropen" data-id="${t.id}">Contact tracing file</button>`)}<h1>${f.id?"Edit contact":"Add a contact"}</h1>
+    ${chipsBlock("Contact is","kind",T_KINDS,f)}
+    <div class="row"><div>${inputRow("tc1","Name","name",f)}</div><div>${inputRow("tc2",f.kind==="Patient"?"MRN":f.kind==="Staff"?"Employee number":"ID or phone <small>(optional)</small>","idNo",f,"text",f.kind!=="Visitor"?'inputmode="numeric"':"")}</div></div>
+    <div class="row"><div>${selRow("tc3","Department or unit","dept",DEPARTMENTS,f)}</div><div>${inputRow("tc4","Mobile <small>(optional)</small>","mobile",f,"text",'inputmode="numeric" maxlength="10"')}</div><div>${inputRow("tc5","Last exposure date","lastDate",f,"date",`max="${today()}"`)}</div></div>
+    ${chipsBlock("Type of contact","closeness",T_CLOSE,f)}
+    ${chipsBlock("PPE used during the contact","protected",T_PROT,f)}
+    ${f.closeness?`<p class="hint">Risk: <b>${tRisk(f)}</b>. Close contact without PPE is high risk.</p>`:""}
+    <label class="f">Actions <small>(due dates count from the last exposure)</small></label>
+    <div class="card">${(f.actions||[]).map((a,i)=>`<div class="row" style="align-items:center;margin:0 0 8px">
+        <div style="flex:0 0 80px"><input type="text" inputmode="numeric" value="${esc(a.day)}" data-tday="${i}" aria-label="Day"><small class="hint">day</small></div>
+        <div style="flex:4"><input type="text" value="${esc(a.t)}" data-tact="${i}" aria-label="Action"></div>
+        <div style="flex:0 0 auto"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-tdone="${i}" ${a.done?"checked":""}> Done</label></div>
+        ${a.done?`<div style="flex:2"><input type="text" value="${esc(a.result||"")}" data-tres="${i}" placeholder="Result, e.g. IGRA negative"></div>`:""}
+        <div style="flex:0 0 auto"><button class="link-btn" data-a="tcdelact" data-i="${i}" aria-label="Remove action">Remove</button></div></div>`).join("")||`<p class="hint">No actions.</p>`}
+      <button class="btn ghost small" data-a="tcaddact">Add an action</button></div>
+    ${selRow("tc6","Outcome <small>(when this contact is finished)</small>","outcome",["",...T_OUT],f)}
+    ${noteBlock(f)}
+    ${errHtml()}<div style="margin-top:16px" class="row"><div><button class="btn block" data-a="tcsave">Save contact</button></div>${f.id?`<div style="flex:0 0 auto"><button class="btn ghost" data-a="tcdel">Remove contact</button></div>`:""}</div></div>`;}
+function readContactActs(f){document.querySelectorAll("[data-tact]").forEach(el=>{const i=+el.dataset.tact;f.actions[i].t=el.value;});
+  document.querySelectorAll("[data-tday]").forEach(el=>{const i=+el.dataset.tday;f.actions[i].day=el.value.replace(/\D/g,"")||"0";});
+  document.querySelectorAll("[data-tres]").forEach(el=>{const i=+el.dataset.tres;f.actions[i].result=el.value;});}
+async function saveContact(){const t=trOf(S.trId),f=S.form;readContactActs(f);
+  if(!f.kind)return fail("Choose staff, patient or visitor.");
+  if(!String(f.name||"").trim())return fail("Write the contact's name.");
+  if(f.kind==="Patient"&&f.idNo&&!/^6\d{6}$/.test(f.idNo.trim()))return fail("The MRN must be 7 digits starting with 6.");
+  if(f.kind==="Staff"&&f.idNo&&!/^\d{8}$/.test(f.idNo.trim()))return fail("The employee number must be 8 digits.");
+  if(!f.lastDate)return fail("Enter the last exposure date.");
+  if(!f.closeness||!f.protected)return fail("Choose the type of contact and whether PPE was used.");
+  const acts=(f.actions||[]).filter(a=>String(a.t).trim()).map(a=>({...a,t:String(a.t).trim(),day:String(a.day||0),date:a.done?(a.date||today()):"",result:a.done?(a.result||""):""}));
+  const c={id:f.id||uid(),kind:f.kind,name:f.name.trim(),idNo:(f.idNo||"").trim(),dept:f.dept||"",mobile:(f.mobile||"").trim(),lastDate:f.lastDate,closeness:f.closeness,protected:f.protected,actions:acts,outcome:f.outcome||"",note:(f.note||"").trim(),by:f.by||S.user.name};
+  const i=t.contacts.findIndex(x=>x.id===c.id);if(i>-1)t.contacts[i]=c;else t.contacts.push(c);
+  await saveRec("ipc-trace",S.trace,t);go("trace",{form:{}});toast(i>-1?`${c.name} updated`:`${c.name} added with ${acts.length} actions`);}
+function traceExport(){const t=trOf(S.trId),ix=trIndex(t),rows=[];
+  t.contacts.forEach(c=>{const base=[ix.disease,ix.name,ix.mrn,c.name,c.kind,c.idNo,c.dept,c.mobile,fmt(c.lastDate),c.closeness,c.protected,tRisk(c),c.outcome||"Open"];
+    (c.actions.length?c.actions:[{t:"",day:0}]).forEach(a=>rows.push([...base,a.t,a.t?fmt(tDue(c,a)):"",a.t?(a.done?"Done":tDue(c,a)<today()&&!c.outcome?"Overdue":"Pending"):"",a.done?fmt(a.date):"",a.result||""]));});
+  const head=["Disease","Index case","Index MRN","Contact","Staff, patient or visitor","MRN or employee number","Department","Mobile","Last exposure","Contact type","PPE used","Risk","Outcome","Action","Due","Action status","Done on","Result"];
+  const a=document.createElement("a");a.href=URL.createObjectURL(xlsxBlob([["Contact tracing",head,rows]]));a.download=`contact-tracing-${(ix.disease||"case").replace(/[^A-Za-z0-9]+/g,"-").toLowerCase()}-${today()}.xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast("Excel file ready");}
+function vTraceTpl(){const d=S.tplD||Object.keys(TRACE_DEFAULT)[0],tp=traceTpl(d),f=S.form;
+  return `<div class="wrap">${crumb("Templates",`<span>/</span><button data-a="nav" data-v="traces">Contact tracing</button>`)}<h1>Contact tracing templates</h1>
+    <p class="lead">What the platform suggests for each disease, and the actions added to every new contact. Draft wording: review with the hospital policy and MOH guidance.</p>
+    <label class="f" for="tpd">Disease</label><select id="tpd" data-tpld="1">${[...DISEASE_LIST].map(x=>`<option ${x===d?"selected":""}>${esc(x)}</option>`).join("")}</select>
+    ${chipsBlock("Contact tracing","need",["yes","consider","no"],f).replace(/>yes</,">Usually required<").replace(/>consider</,">Case by case<").replace(/>no</,">Usually not required<")}
+    ${f.need==="no"?inputRow("tpw","Reason shown when not required","why",f):""}
+    <label class="f" for="tpa">Actions <small>(one per line: day, then the action. Example: 56 | Repeat IGRA)</small></label>
+    <textarea id="tpa" data-bind="acts" rows="8" dir="ltr">${esc(f.acts||"")}</textarea>
+    ${errHtml()}<div class="row" style="margin-top:14px"><div><button class="btn block" data-a="tplsave">Save template</button></div>${(S.traceTpl||{})[d]?`<div style="flex:0 0 auto"><button class="btn ghost" data-a="tplreset">Back to the draft</button></div>`:""}</div></div>`;}
+const tplForm=d=>{const tp=traceTpl(d);return{need:tp.need,why:tp.why||"",acts:(tp.actions||[]).map(([n,t])=>`${n} | ${t}`).join("\n")};};
+
 /* ================= Communicable disease notifications (sent from the public form notify.html) ================= */
-const ntForm=x=>({state:x.state==="New"?"In review":x.state||"In review",mohDate:x.mohDate||"",mohRef:x.mohRef||"",ipcNote:x.ipcNote||""});
+const ntForm=x=>({state:x.state==="New"?"In review":x.state||"In review",mohDate:x.mohDate||"",mohRef:x.mohRef||"",ipcNote:x.ipcNote||"",traceDecision:x.traceDecision||"Pending",traceReason:x.traceReason||""});
+/* the communicable disease cycle for one notification */
+function ntSteps(x,f){const st=(f?.state)||x.state||"New",tr=S.trace.find(t=>t.notifyId===x.id),dec=(f?.traceDecision)||x.traceDecision||"Pending",iso=S.iso.some(i=>i.mrn===x.mrn&&!i.end);
+  const trOk=dec==="Not required"?!!String((f?.traceReason)??x.traceReason??"").trim():dec==="Required"?!!tr&&(tr.status==="Closed"||trDone(tr)):false;
+  return [["Received",true,ntWhen(x)],["Reviewed",st!=="New",st==="New"?"Not yet":"Done"],["Isolation",iso||!(x.isolation||[]).some(p=>p!=="Standard"),iso?"On the isolation board":(x.isolation||[]).some(p=>p!=="Standard")?"Not on the board":"Standard only"],
+    ["Reported to MOH",!!((f?.mohDate)||x.mohDate),((f?.mohDate)||x.mohDate)?fmt((f?.mohDate)||x.mohDate):"Not yet"],
+    ["Contact tracing",trOk,dec==="Pending"?"Decision needed":dec==="Not required"?"Not required":tr?`${(tr.contacts||[]).filter(c=>c.outcome).length} of ${(tr.contacts||[]).length} contacts closed`:"File not opened"],
+    ["Closed",st==="Closed",st==="Closed"?"Done":"Open"]];}
+const ntStepsHtml=(x,f)=>`<div class="ntsteps">${ntSteps(x,f).map(([l,ok,d],i)=>`<div class="ntstep${ok?" ok":""}"><span>${ok?"\u2713":i+1}</span><b>${l}</b><small>${esc(d)}</small></div>`).join("")}</div>`;
 const NT_STATES=["New","In review","Reported to MOH","Closed"];
 const ntDisease=x=>x.disease==="Other"?(x.diseaseOther||"Other"):x.disease;
 const ntTime=x=>{const t=x.ts?.toDate?x.ts.toDate():x.ts?.seconds?new Date(x.ts.seconds*1000):x.submitted?new Date(x.submitted):null;return t&&!isNaN(t)?t:null;};
@@ -1006,7 +1187,7 @@ function vNotify(){
       <div style="flex:0 0 auto"><button class="btn ghost" data-a="ntxlsx" ${l.length?"":"disabled"}>Export this list to Excel</button></div></div>
     <div class="chips" style="margin:6px 0 12px">${[["open","Open"],...NT_STATES.map(x=>[x,x]),["all","All"]].map(([v,t])=>`<button class="chip" aria-pressed="${f===v}" data-a="ntf" data-v="${v}">${t}${NT_STATES.includes(v)?` (${cnt(v)})`:""}</button>`).join("")}</div>
     ${l.length?l.map(x=>{const st=x.state||"New";return `<button class="card ntcard${st==="New"?" ntnew":""}" data-a="ntopen" data-id="${x.id}">
-      <div class="ntrow"><b>${esc(ntDisease(x))}</b><span class="tag ${x.status==="Confirmed"?"no":"na"}">${esc(x.status)}</span><span class="tag ${st==="New"?"no":st==="Closed"?"ok":"na"}">${esc(st)}</span><span class="hint" style="margin-left:auto">${ntWhen(x)}</span></div>
+      <div class="ntrow"><b>${esc(ntDisease(x))}</b><span class="tag ${x.status==="Confirmed"?"no":"na"}">${esc(x.status)}</span><span class="tag ${st==="New"?"no":st==="Closed"?"ok":"na"}">${esc(st)}</span>${x.traceDecision==="Required"?`<span class="tag mid">Contact tracing</span>`:""}<span class="hint" style="margin-left:auto">${ntWhen(x)}</span></div>
       <div>${esc(x.name)}, MRN ${esc(x.mrn)}${x.location?`, ${esc(x.location)}`:""}. ${x.status==="Confirmed"?"Confirmed":"Suspected"} ${fmt(x.date)}.</div>
       <div class="hint">Isolation: ${esc((x.isolation||[]).join(" + "))}. Reported by ${esc(x.reporter)} (${esc(x.empId)})${x.reporterDept?`, ${esc(x.reporterDept)}`:""}.</div></button>`;}).join("")
       :`<div class="card">No notifications ${f==="all"?"yet":"in this list"}.</div>`}</div>`;
@@ -1014,7 +1195,7 @@ function vNotify(){
 function vNotifyOne(){
   const x=S.notify.find(y=>y.id===S.ntId),f=S.form;if(!x)return `<div class="wrap">${crumb("Disease notifications")}<div class="card">Not found.</div></div>`;
   const iso=S.iso.find(i=>!i.end&&i.mrn===x.mrn);
-  return `<div class="wrap">${bcrumb("Notification",`<span>/</span><button data-a="nav" data-v="notify">Disease notifications</button>`)}
+  return `<div class="wrap">${crumb("Notification",`<span>/</span><button data-a="nav" data-v="notify">Disease notifications</button>`)}
     <h1>${esc(ntDisease(x))} <span class="tag ${x.status==="Confirmed"?"no":"na"}" style="vertical-align:middle">${esc(x.status)}</span></h1>
     <p class="lead">Received ${ntWhen(x)}. Reference ${esc(x.id.slice(-6).toUpperCase())}.</p>
     <div class="card"><table class="kv"><tbody>
@@ -1028,6 +1209,13 @@ function vNotifyOne(){
     </tbody></table></div>
     <div class="card">${iso?`<b>On isolation board:</b> ${esc(iso.unit)} bed ${esc(iso.bed)}, ${esc((iso.precautions||[]).join(" + "))} since ${fmt(iso.start)}. <button class="link-btn" data-a="nav" data-v="isoboard">Open board</button>`
       :`<b>Not on the isolation board.</b> ${(x.isolation||[]).some(p=>p!=="Standard")?"The reporter listed transmission-based precautions. ":""}<button class="btn ghost small" data-a="ntiso">Start isolation from this notification</button>`}</div>
+    <h2>Communicable disease cycle</h2>${ntStepsHtml(x,f)}
+    <h2>Contact tracing</h2>
+    <div class="card">${(()=>{const tp=traceTpl(ntDisease(x)),tr=S.trace.find(t=>t.notifyId===x.id);
+      return `<p style="margin-top:0">Suggested for ${esc(ntDisease(x))}: <b>${NEED_LABEL[tp.need]}</b>${tp.need==="no"&&tp.why?`. ${esc(tp.why)}`:""}.</p>
+      ${chipsBlock("Decision","traceDecision",["Required","Not required","Pending"],f)}
+      ${f.traceDecision==="Not required"?inputRow("ntt","Reason <small>(required)</small>","traceReason",f,"text",'placeholder="e.g. Isolated on arrival, no unprotected exposure"'):""}
+      ${f.traceDecision==="Required"?`<div style="margin-top:10px"><button class="btn" data-a="trfromnt">${tr?`Open contact tracing (${(tr.contacts||[]).length} contacts)`:"Start contact tracing"}</button></div>`:""}`;})()}</div>
     <h2>Infection control follow-up</h2>
     ${chipsBlock("Status","state",NT_STATES,f)}
     <div class="row"><div><label class="f" for="ntm">Reported to MOH on <small>(HESN or other)</small></label><input type="date" id="ntm" data-bind="mohDate" value="${f.mohDate||""}" max="${today()}"></div>
@@ -1048,8 +1236,11 @@ function ntExport(){
 async function saveNotify(){
   const x=S.notify.find(y=>y.id===S.ntId),f=S.form;if(!x)return;
   if(f.state==="Reported to MOH"&&!f.mohDate)return fail("Enter the date it was reported to the Ministry of Health.");
+  if(f.traceDecision==="Not required"&&!String(f.traceReason||"").trim())return fail("Write why contact tracing is not required.");
+  if(f.state==="Closed"){const miss=ntSteps(x,f).slice(0,5).filter(([l,ok])=>!ok&&l!=="Isolation").map(([l])=>l.toLowerCase());
+    if(miss.length)return fail(`The cycle is not complete yet: ${miss.join(", ")}. Finish these before closing.`);}
   if(f.mohDate&&f.state==="New")f.state="Reported to MOH";
-  Object.assign(x,{state:f.state||"New",mohDate:f.mohDate||"",mohRef:(f.mohRef||"").trim(),ipcNote:(f.ipcNote||"").trim(),reviewedBy:S.user.name,reviewedOn:today()});
+  Object.assign(x,{state:f.state||"New",mohDate:f.mohDate||"",mohRef:(f.mohRef||"").trim(),ipcNote:(f.ipcNote||"").trim(),traceDecision:f.traceDecision||"Pending",traceReason:f.traceDecision==="Not required"?(f.traceReason||"").trim():"",reviewedBy:S.user.name,reviewedOn:today()});
   await sset("ipc-notify",S.notify);go("notify");toast(`Notification saved: ${x.state}`);
 }
 function vHome(){
@@ -1080,6 +1271,7 @@ function vHome(){
       team&&tile("training","#6B5B3E","Training",`${S.train.filter(x=>x.date.startsWith(thisYear())).length} sessions this year`)])}
     ${team?group(3,"Investigate","Cases, clusters and resistance",[
       tile("notify","#B42318","Disease notifications",ntNew().length?`<span class="alert">${ntNew().length} new</span>`:`${S.notify.filter(x=>(x.state||"New")!=="Closed").length} open`),
+      tile("traces","#7A3E9D","Contact tracing",trOverdueCount()?`<span class="alert">${trOverdueCount()} overdue ${trOverdueCount()===1?"action":"actions"}</span>`:`${S.trace.filter(t=>t.status!=="Closed").length} open`),
       tile("cases","var(--stop)","HAI case review",review?`<span class="alert">${review} possible ${review===1?"case":"cases"} to review</span>`:"No cases waiting for review"),
       tile("outbreaks","var(--stop)","Outbreaks",activeOb?`<span class="alert">${activeOb} active investigation${activeOb===1?"":"s"}</span>`:`${clusters().length} clusters in 60 days`),
       tile("abg","var(--stop)","Antibiogram",`${S.ast.length} susceptibility results`)]):""}
@@ -2769,7 +2961,7 @@ function render(){
   const bar=S.user?`<header class="bar"><div class="wrap"><button class="brand" data-a="nav" data-v="home" aria-label="Home"><img src="${LOGO}" alt="Al-Sobh Hospital"><span>Infection Control Platform<small>Infection Prevention and Control</small></span></button>
     <div class="who">${esc(S.user.name)}<br><span class="role ${S.user.role}">${ROLES[S.user.role]}</span><br>
     <button data-a="nav" data-v="changepw">Change password</button> <button data-a="logout">Sign out</button></div></div></header>`:"";
-  const views={setup:vSetup,login:vLogin,home:vHome,overview:vOverview,notify:vNotify,notifyone:vNotifyOne,surv:vSurv,records:vRecords,dash:vDash,actions:vActions,actionNew:vActionNew,users:vUsers,changepw:vChangePw,hh:vHH,ppe:vPPE,waste:vWaste,env:vEnv,round:vRound,ptform:vPtForm,patient:vPatient,devnew:vDevNew,device:vDevice,check:vCheck,signoff:vSignoff,culture:vCulture,cases:vCases,case:vCase,bdash:vBDash,surg:vSurg,crrsins:vCrrs,crrsmnt:vCrrs,uaccess:vUAccess,settings:vSettings,log:vLog,risk:vRisk,cbahi:vCbahi,spc:vSpc,outbreaks:vOutbreaks,outbreak:vOutbreak,
+  const views={setup:vSetup,login:vLogin,home:vHome,overview:vOverview,notify:vNotify,notifyone:vNotifyOne,traces:vTraces,trace:vTrace,traceedit:vTraceEdit,tcontact:vTraceContact,tracetpl:vTraceTpl,surv:vSurv,records:vRecords,dash:vDash,actions:vActions,actionNew:vActionNew,users:vUsers,changepw:vChangePw,hh:vHH,ppe:vPPE,waste:vWaste,env:vEnv,round:vRound,ptform:vPtForm,patient:vPatient,devnew:vDevNew,device:vDevice,check:vCheck,signoff:vSignoff,culture:vCulture,cases:vCases,case:vCase,bdash:vBDash,surg:vSurg,crrsins:vCrrs,crrsmnt:vCrrs,uaccess:vUAccess,settings:vSettings,log:vLog,risk:vRisk,cbahi:vCbahi,spc:vSpc,outbreaks:vOutbreaks,outbreak:vOutbreak,
   isoboard:vIsoBoard,iso:vIso,staffhealth:vStaffHealth,expo:vExpo,fit:vFit,training:vTraining,train:vTrain,abg:vAbg,sched:vSched,scorecard:vScorecard,report:vReport,mdro:vMdro,mdronew:vMdroNew,mdroimp:vMdroImp,dischg:vDischarge,bench:vBench,adh:vAdh};
   const modal=S.modal?`<div class="modal" data-a="closemodal"><div class="inner"><button class="btn ghost small" data-a="closemodal">Close</button>${S.modal}</div></div>`:"";
   const foot=`<footer class="foot"><span>© ${new Date().getFullYear()} <b>Dr. Asem Naji</b>. All rights reserved. <span class="ver">Version ${APP_VERSION}</span></span><span>Infection Prevention and Control, Al-Sobh Hospital, Jeddah</span></footer>`;
@@ -2933,6 +3125,7 @@ document.addEventListener("click",async e=>{
   else if(a==="login")CLOUD?cloudLogin():doLogin();
   else if(a==="forgot"&&CLOUD)cloudForgot();
   else if(a==="logout"){if(CLOUD){cloudLogout();return;}S.user=null;await sset("ipc-session",null);go("login");}
+  else if(a==="nav"&&b.dataset.v==="tracetpl"){const d=S.tplD||DISEASE_LIST[0];go("tracetpl",{form:tplForm(d)});}
   else if(a==="nav")go(b.dataset.v);
   else if(a==="sigclear"){if(S.form?.sig?.[b.dataset.k])delete S.form.sig[b.dataset.k].img;const c=$(`canvas[data-sigc="${b.dataset.k}"]`);c?.getContext("2d").clearRect(0,0,c.width,c.height);}
   else if(a==="back")history.length>1&&(S.hist||[]).length?history.back():goBack();
@@ -2975,6 +3168,28 @@ document.addEventListener("click",async e=>{
   else if(a==="xlsxall"&&isMaster())exportAllXlsx();
   else if(a==="ntf"){S.ntF=b.dataset.v;render();}
   else if(a==="ntxlsx"&&isTeam())ntExport();
+  else if(a==="trfromnt"&&isTeam()){const x=S.notify.find(y=>y.id===S.ntId);if(S.form){x.traceDecision="Required";await sset("ipc-notify",S.notify);}await openTraceFor("notify",x.id);}
+  else if(a==="trfromob"&&isTeam())await openTraceFor("ob",b.dataset.id);
+  else if(a==="obopen")go("outbreak",{obId:b.dataset.id});
+  else if(a==="trf"){S.trF=b.dataset.v;render();}
+  else if(a==="tropen"){S.trId=b.dataset.id;go("trace",{form:{}});}
+  else if(a==="trnew"&&isTeam()){const t=newTrace({disease:"",expFrom:today(),expTo:today()});await saveRec("ipc-trace",S.trace,t);S.trId=t.id;go("traceedit",{form:{disease:"",indexName:"",indexMrn:"",indexLocation:"",indexDate:today(),expFrom:today(),expTo:today()}});}
+  else if(a==="tredit"){const t=trOf(S.trId);go("traceedit",{form:{disease:t.disease||"",indexName:t.indexName||"",indexMrn:t.indexMrn||"",indexLocation:t.indexLocation||"",indexDate:t.indexDate||"",expFrom:t.expFrom||"",expTo:t.expTo||""}});}
+  else if(a==="trsave"&&isTeam()){const t=trOf(S.trId),f=S.form;if(!t.notifyId&&!f.disease)return fail("Choose the disease.");if(f.expFrom&&f.expTo&&f.expTo<f.expFrom)return fail("The exposure end date is before the start date.");
+    Object.assign(t,t.notifyId?{expFrom:f.expFrom,expTo:f.expTo}:{disease:f.disease,indexName:(f.indexName||"").trim(),indexMrn:(f.indexMrn||"").trim(),indexLocation:(f.indexLocation||"").trim(),indexDate:f.indexDate,expFrom:f.expFrom,expTo:f.expTo});
+    await saveRec("ipc-trace",S.trace,t);go("trace",{form:{}});toast("Saved");}
+  else if(a==="trcnew"){const t=trOf(S.trId),tp=traceTpl(trIndex(t).disease);go("tcontact",{form:{kind:"",name:"",idNo:"",dept:"",mobile:"",lastDate:t.expTo||today(),closeness:"",protected:"",outcome:"",note:"",actions:(tp.actions||[]).map(([d,tx])=>({id:uid(),day:String(d),t:tx,done:false,date:"",result:""}))}});}
+  else if(a==="trcedit"){const c=trOf(S.trId).contacts.find(x=>x.id===b.dataset.id);go("tcontact",{form:JSON.parse(JSON.stringify(c))});}
+  else if(a==="tcsave"&&isTeam())saveContact();
+  else if(a==="tcaddact"){readContactActs(S.form);S.form.actions.push({id:uid(),day:"0",t:"",done:false,date:"",result:""});render();}
+  else if(a==="tcdelact"){readContactActs(S.form);S.form.actions.splice(+b.dataset.i,1);render();}
+  else if(a==="tcdel"&&isTeam()){if(confirm("Remove this contact from the file?")){const t=trOf(S.trId);t.contacts=t.contacts.filter(c=>c.id!==S.form.id);await saveRec("ipc-trace",S.trace,t);go("trace",{form:{}});toast("Contact removed");}}
+  else if(a==="trclose"&&isTeam()){const t=trOf(S.trId);if(!trDone(t))return;Object.assign(t,{status:"Closed",closed:today(),closedBy:S.user.name});await saveRec("ipc-trace",S.trace,t);render();toast("Contact tracing closed");}
+  else if(a==="trreopen"&&isTeam()){const t=trOf(S.trId);t.status="Open";delete t.closed;await saveRec("ipc-trace",S.trace,t);render();}
+  else if(a==="trxlsx")traceExport();
+  else if(a==="tplsave"&&isMaster()){const d=S.tplD||DISEASE_LIST[0],f=S.form;const acts=String(f.acts||"").split("\n").map(l=>l.trim()).filter(Boolean).map(l=>{const m=l.match(/^(\d+)\s*[|:,-]\s*(.+)$/);return m?[+m[1],m[2].trim()]:[0,l];});
+    S.traceTpl={...(S.traceTpl||{}),[d]:{need:f.need||"consider",why:(f.why||"").trim(),actions:acts}};await sset("ipc-tracetpl",S.traceTpl);render();toast(`Template saved for ${d}`);}
+  else if(a==="tplreset"&&isMaster()){const d=S.tplD||DISEASE_LIST[0];const c={...(S.traceTpl||{})};delete c[d];S.traceTpl=c;await sset("ipc-tracetpl",S.traceTpl);S.form=tplForm(d);render();toast("Back to the draft template");}
   else if(a==="ntopen"){const x=S.notify.find(y=>y.id===b.dataset.id);S.ntId=x.id;go("notifyone",{form:ntForm(x)});}
   else if(a==="ntsave"&&isTeam())saveNotify();
   else if(a==="ntcopy"){try{await navigator.clipboard.writeText(notifyUrl());toast("Link copied");}catch(_){$("#ntlink").select();toast("Select and copy the link",true);}}
@@ -3103,6 +3318,10 @@ document.addEventListener("change",async e=>{
   if(t.dataset.astimp&&t.files[0]&&isTeam()){astFile(t.files[0]);t.value="";return;}
   if(t.dataset.scd){S.scD=t.value;render();return;}
   if(t.dataset.ov){S[t.dataset.ov]=t.value;render();return;}
+  if(t.dataset.tract&&isTeam()){const [cid,aid]=t.dataset.tract.split("|"),tr=trOf(S.trId),c=tr.contacts.find(x=>x.id===cid),ac=c.actions.find(x=>x.id===aid);
+    ac.done=t.checked;ac.date=t.checked?today():"";if(!t.checked)ac.result="";await saveRec("ipc-trace",S.trace,tr);render();toast(t.checked?"Action done. Use Edit to add the result.":"Action marked not done");return;}
+  if(t.dataset.tdone!==undefined&&S.form?.actions){readContactActs(S.form);const i=+t.dataset.tdone;S.form.actions[i].done=t.checked;S.form.actions[i].date=t.checked?(S.form.actions[i].date||today()):"";render();return;}
+  if(t.dataset.tpld){S.tplD=t.value;S.form=tplForm(t.value);render();return;}
   if(t.dataset.placechg&&S.form){if(t.value==="Another hospital"){if(S.form.insertDate===today())S.form.insertDate="";if(!S.form.insObserved)S.form.insObserved="No";}else if(!S.form.insertDate)S.form.insertDate=today();render();return;}
   if(t.dataset.newrole){S.newRole=t.value;S.newDraft={nn:val("nn"),nu:val("nu"),np:$("#np").value};render();return;}
   if(t.dataset.mdro){S.mdroF[t.dataset.mdro]=t.value;render();return;}
@@ -3528,6 +3747,7 @@ function vOutbreak(){
   return `<div class="wrap wide">${crumb(o.name,`<span>/</span><button data-a="nav" data-v="outbreaks">Outbreaks</button>`)}
     <h1>${esc(o.name)}</h1>
     <p class="lead">${esc(o.unit)}. Started ${fmt(o.start)}. ${o.status==="Closed"?`Closed ${fmt(o.closed)}.`:`<b style="color:var(--stop)">Active.</b>`} Organism: ${esc(o.organism||"not set")}.</p>
+    <div style="margin:0 0 12px"><button class="btn ghost" data-a="trfromob" data-id="${o.id}">${S.trace.some(t=>t.obId===o.id)?"Open contact tracing":"Start contact tracing"}</button></div>
     <div class="card"><label class="f" style="margin-top:0" for="obd">Case definition</label><textarea id="obd" data-obf="definition">${esc(o.definition||"")}</textarea>
       <div style="margin-top:8px"><button class="btn ghost small" data-a="obsavedef">Save case definition</button></div></div>
     <h2>Epidemic curve</h2><div class="card">${epiCurve(o.cases)}</div>
@@ -3618,7 +3838,7 @@ function vStaffHealth(){
   const soon=fits.filter(x=>x.result==="Pass"&&addDays(x.date,365)>=today()&&addDays(x.date,335)<=today()),expired=fits.filter(x=>!fitValid(x));
   return `<div class="wrap wide">${crumb("Occupational health")}
     <h1>Occupational health</h1>
-    <div class="chips subnav">${[["expo","Exposures"],["fit","N95 fit testing"]].map(([v,l])=>`<button class="chip" aria-pressed="${tab===v}" data-a="shtab" data-v="${v}">${l}</button>`).join("")}</div>
+    <div class="chips subnav">${[["expo","Exposures"],["fit","N95 fit testing"],["trace","Contact tracing"]].map(([v,l])=>`<button class="chip" aria-pressed="${tab===v}" data-a="shtab" data-v="${v}">${l}</button>`).join("")}</div>
     ${tab==="expo"?`<div class="stats" style="margin-top:14px">
       <div class="stat" style="--c:var(--stop)"><span>Exposures this year</span><b>${ex.length}</b><small>${ex.filter(x=>x.type===EXPO_TYPES[0]).length} sharps injuries</small></div>
       <div class="stat" style="--c:#C98A00"><span>Follow-up overdue</span><b>${S.expo.filter(x=>fuDue(x).length&&!x.closed).length}</b></div>
@@ -3628,7 +3848,7 @@ function vStaffHealth(){
         ${ex.map(x=>`<tr><td style="white-space:nowrap">${fmt(x.date)}</td><td>${esc(x.staffName)}<br><small>${esc(x.category||"")}</small></td><td>${esc(x.type)}</td><td>${esc(x.dept)}</td><td>${esc(x.source||"–")}</td>
           <td>${x.closed?`<span class="tag ok">Completed</span>`:fuDue(x).length?`<span class="tag no">Due: ${fuDue(x).join(", ")}</span>`:`<span class="tag mid">On schedule</span>`}</td>
           <td><button class="link-btn" data-a="editexpo" data-id="${x.id}">Open</button></td></tr>`).join("")}</tbody></table></div>`:`<div class="card" style="margin-top:12px">No exposures recorded this year.</div>`}`
-    :`<div class="stats" style="margin-top:14px">
+    :tab==="trace"?traceListHtml():`<div class="stats" style="margin-top:14px">
       <div class="stat" style="--c:var(--go)"><span>Valid fit tests</span><b>${fits.filter(fitValid).length}</b><small>staff tested in the last 12 months</small></div>
       <div class="stat" style="--c:#C98A00"><span>Expiring within 30 days</span><b>${soon.length}</b></div>
       <div class="stat" style="--c:var(--stop)"><span>Expired or failed</span><b>${expired.length}</b></div></div>
@@ -3850,7 +4070,7 @@ async function importLocal(){
   return restoreData(D,"merge");
 }
 async function restoreData(D,mode){
-  const arr=["ipc-audits","ipc-actions","ipc-patients","ipc-devices","ipc-events","ipc-mdro","ipc-surg","ipc-risk","ipc-outbreaks","ipc-iso","ipc-expo","ipc-fit","ipc-train","ipc-notify","ipc-sched","ipc-ast","ipc-log"];
+  const arr=["ipc-audits","ipc-actions","ipc-patients","ipc-devices","ipc-events","ipc-mdro","ipc-surg","ipc-risk","ipc-outbreaks","ipc-iso","ipc-expo","ipc-fit","ipc-train","ipc-notify","ipc-trace","ipc-sched","ipc-ast","ipc-log"];
   if(mode==="replace"){if(!confirm("Replace everything on this device with the backup? Current data on this device will be lost."))return;
     for(const k of await listKeys())if(k!=="ipc-session"&&!(k in D))await sdel(k);
     for(const [k,v] of Object.entries(D))await sset(k,v);}
@@ -3859,7 +4079,7 @@ async function restoreData(D,mode){
       const m=k==="ipc-log"?[...cur,...inc].sort((a,b)=>a.ts-b.ts):[...cur,...inc];await sset(k,m);}
     const cu=(await sget("ipc-users"))||[],nu=CLOUD?[]:(D["ipc-users"]||[]).filter(u=>!cu.some(x=>x.username===u.username));if(!CLOUD)await sset("ipc-users",[...cu,...nu]);
     for(const [k,v] of Object.entries(D))if(k.startsWith("ipc-photo:")&&(await sget(k))===null)await sset(k,v);
-    for(const k of ["ipc-targets","ipc-bench","ipc-envcustom","ipc-census","ipc-cbahi"])if(D[k]&&!(await sget(k)))await sset(k,D[k]);
+    for(const k of ["ipc-targets","ipc-bench","ipc-envcustom","ipc-census","ipc-cbahi","ipc-tracetpl"])if(D[k]&&!(await sget(k)))await sset(k,D[k]);
     toast(`Merged ${added} new records${nu.length?` and ${nu.length} accounts`:""}`);}
   if(!CLOUD)setTimeout(()=>location.reload(),900);
 }
@@ -3942,6 +4162,8 @@ function exportAllXlsx(){
   {const [h,r]=flatSheet(S.mdro,[x=>onsetOf(x)],["Onset"]);sh.push(["MDRO",h,r]);}
   {const [h,r]=flatSheet(S.iso.map(x=>({...x,reasons:isoReasonTxt(x)})),[x=>x.end?"Ended":"Active"],["Status"]);sh.push(["Isolation",h,r]);}
   {const [h,r]=flatSheet(S.notify.map(x=>({...x,ts:undefined,received:ntWhen(x),disease:ntDisease(x),diseaseOther:undefined})));sh.push(["Disease notifications",h,r]);}
+  {const rows=[];S.trace.forEach(t=>{const ix=trIndex(t);(t.contacts||[]).forEach(c=>rows.push([ix.disease,ix.name,ix.mrn,t.status,c.name,c.kind,c.idNo,c.dept,fd(c.lastDate),c.closeness,c.protected,tRisk(c),(c.actions||[]).filter(a=>a.done).length,(c.actions||[]).length,tOverdue(c).length,c.outcome||"Open"]));});
+   sh.push(["Contact tracing",["Disease","Index case","Index MRN","File status","Contact","Staff, patient or visitor","MRN or employee number","Department","Last exposure","Contact type","PPE used","Risk","Actions done","Actions total","Overdue","Outcome"],rows]);}
   {const [h,r]=flatSheet(S.outbreaks);sh.push(["Outbreaks",h,r]);}
   {const [h,r]=flatSheet(S.actions,[x=>isOverdue(x)?"Overdue":""],["Overdue"]);sh.push(["Corrective actions",h,r]);}
   {const rows=[];S.risk.forEach(ra=>(ra.items||[]).forEach(it=>{const sc=(+it.prob||0)*(+it.impact||0)*(+it.prep||0);rows.push([ra.year,it.category||"",it.hazard,+it.prob||"",+it.impact||"",+it.prep||"",sc||""]);}));
@@ -4027,6 +4249,8 @@ function logcsv(){
   S.expo=(await sget("ipc-expo"))||[];
   S.fit=(await sget("ipc-fit"))||[];
   S.train=(await sget("ipc-train"))||[];
+  S.trace=(await sget("ipc-trace"))||[];
+  S.traceTpl=(await sget("ipc-tracetpl"))||{};
   S.notify=(await sget("ipc-notify"))||[];
   S.sched=(await sget("ipc-sched"))||[];
   S.ast=(await sget("ipc-ast"))||[];
@@ -4034,7 +4258,7 @@ function logcsv(){
   S.settings=(await sget("ipc-settings"))||{};
   for(const [k,key] of [["audits","ipc-audits"],["actions","ipc-actions"],["patients","ipc-patients"],["devices","ipc-devices"],["events","ipc-events"],["mdro","ipc-mdro"],["surg","ipc-surg"]]){
     const clean=enDeep(S[k]);if(JSON.stringify(clean)!==JSON.stringify(S[k])){S[k]=clean;mem[key]=clean;await (async()=>{try{if(window.storage)await window.storage.set(key,JSON.stringify(clean),false);else if(LS)LS.setItem(key,JSON.stringify(clean));}catch(e){}})();}}
-  Object.keys(TRACK).forEach(k=>{SNAP[k]=snapOf(mem[k]??({"ipc-risk":S.risk,"ipc-outbreaks":S.outbreaks,"ipc-iso":S.iso,"ipc-expo":S.expo,"ipc-fit":S.fit,"ipc-train":S.train,"ipc-notify":S.notify,"ipc-sched":S.sched,"ipc-ast":S.ast,"ipc-audits":S.audits,"ipc-actions":S.actions,"ipc-patients":S.patients,"ipc-devices":S.devices,"ipc-events":S.events,"ipc-users":S.users,"ipc-mdro":S.mdro,"ipc-surg":S.surg})[k]);});
+  Object.keys(TRACK).forEach(k=>{SNAP[k]=snapOf(mem[k]??({"ipc-risk":S.risk,"ipc-outbreaks":S.outbreaks,"ipc-iso":S.iso,"ipc-expo":S.expo,"ipc-fit":S.fit,"ipc-train":S.train,"ipc-notify":S.notify,"ipc-trace":S.trace,"ipc-sched":S.sched,"ipc-ast":S.ast,"ipc-audits":S.audits,"ipc-actions":S.actions,"ipc-patients":S.patients,"ipc-devices":S.devices,"ipc-events":S.events,"ipc-users":S.users,"ipc-mdro":S.mdro,"ipc-surg":S.surg})[k]);});
   if("serviceWorker" in navigator&&location.protocol==="https:"&&!window.storage){navigator.serviceWorker.register("sw.js").catch(()=>{});}
   const sess=await sget("ipc-session"),u=S.users.find(x=>x.username===sess);
   if(u){S.user=sessUser(u);S.view="home";setTimeout(autoActions,500);}
