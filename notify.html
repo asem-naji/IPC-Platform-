@@ -121,7 +121,7 @@ async function send(){
     /* short alert to the infection control Teams channel, through the relay; no patient identifiers */
     const relay=window.IPC_CONFIG?.notifyRelay;
     if(relay){const dm=F.date.split("-").reverse().join("/"),now=new Date();
-      fetch(relay,{method:"POST",keepalive:true,headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:done,disease:d.disease==="Other"?d.diseaseOther:d.disease,status:d.status,location:d.location,reporterDept:d.reporterDept,date:dm,isolation:d.isolation.join(" + "),
+      fetch(relay,{method:"POST",keepalive:true,headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:done,mrn:d.mrn,empId:d.empId,disease:d.disease==="Other"?d.diseaseOther:d.disease,status:d.status,location:d.location,reporterDept:d.reporterDept,date:dm,isolation:d.isolation.join(" + "),
         received:`${String(now.getDate()).padStart(2,"0")}/${String(now.getMonth()+1).padStart(2,"0")}/${now.getFullYear()} ${now.toTimeString().slice(0,5)}`})}).catch(()=>{});}
   }catch(e){busy=false;err=e&&e.code==="permission-denied"?"The notification was refused. Check the details and try again, or contact the Infection Prevention and Control team.":"Could not send. Check the internet connection and try again.";render();}
 }
