@@ -356,7 +356,7 @@ const LOC={
   "Isolation rooms":{rooms:["ER isolation 1","ER isolation 2","ER isolation 3","ICU isolation 9","ICU isolation 10","ICU isolation 21","CCU isolation","Room 315","Room 317","Room 354","Room 355"]},
   "Other":{rooms:"text",areas:[]}};
 const STAFF=["Nurse","Doctor","Housekeeping","Other"];
-const APP_VERSION="24 Oct 2026 (b)";
+const APP_VERSION="24 Oct 2026 (c)";
 S_START_HASH:{try{window.__ipcHash=location.hash;}catch(_){}}
 const ROLES={team:"Master",prac:"Infection Control Practitioner",link:"Infection Control Link",unit:"Unit head (old account)"};
 const ROLE_CHOICES=["prac","link","team"];
@@ -1178,7 +1178,7 @@ function ccList(){const f=S.ccF||"open";return S.concern.filter(x=>f==="all"||(f
 function vConcerns(){
   const f=S.ccF||"open",l=ccList(),cnt=k=>S.concern.filter(x=>(x.state||"New")===k).length;
   return `<div class="wrap wide">${crumb("Staff concerns")}
-    <h1>Staff IPC concerns</h1>
+    <h1>Contact IPC: messages from staff</h1>
     <p class="lead">Sent by any staff member through the public form, with photos. Name and employee number are optional for the sender.</p>
     <div class="card"><b>Public form link</b>
       <div class="row" style="align-items:center;margin-top:6px"><div style="flex:3"><input type="text" id="cclink" value="${esc(concernUrl())}" readonly dir="ltr" onclick="this.select()"></div>
@@ -1335,7 +1335,7 @@ function vHome(){
       team&&tile("training","#6B5B3E","Training",`${S.train.filter(x=>x.date.startsWith(thisYear())).length} sessions this year`)])}
     ${team?group(3,"Investigate","Cases, clusters and resistance",[
       tile("notify","#B42318","Disease notifications",ntNew().length?`<span class="alert">${ntNew().length} new</span>`:`${S.notify.filter(x=>(x.state||"New")!=="Closed").length} open`),
-      tile("concerns","#C98A00","Staff concerns",ccNew().length?`<span class="alert">${ccNew().length} new</span>`:`${S.concern.filter(x=>(x.state||"New")!=="Resolved").length} open`),
+      tile("concerns","#C98A00","Contact IPC messages",ccNew().length?`<span class="alert">${ccNew().length} new</span>`:`${S.concern.filter(x=>(x.state||"New")!=="Resolved").length} open`),
       tile("traces","#7A3E9D","Contact tracing",trOverdueCount()?`<span class="alert">${trOverdueCount()} overdue ${trOverdueCount()===1?"action":"actions"}</span>`:`${S.trace.filter(t=>t.status!=="Closed").length} open`),
       tile("cases","var(--stop)","HAI case review",review?`<span class="alert">${review} possible ${review===1?"case":"cases"} to review</span>`:"No cases waiting for review"),
       tile("outbreaks","var(--stop)","Outbreaks",activeOb?`<span class="alert">${activeOb} active investigation${activeOb===1?"":"s"}</span>`:`${clusters().length} clusters in 60 days`),
