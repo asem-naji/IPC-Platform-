@@ -28,12 +28,12 @@ footer b{color:var(--primary)}
 <p class="sub">Choose the service you need</p>
 <div id="list"></div>
 </main>
-<footer><b>Infectious Diseases Department and IPC, Al-Sobh Hospital</b><br>Developed by Dr. Asem Naji, Infectious Diseases Consultant<br>&copy; <span id="y"></span> Dr. Asem Naji. All rights reserved.</footer>
+<footer><b>Infectious Diseases Department and IPC, Al-Sobh Hospital</b><br>&copy; <span id="y"></span> Dr. Asem Naji, Infectious Diseases Consultant. All rights reserved.</footer>
 <script>
 /* To change a link later, edit it here. The QR code stays the same. */
 const SERVICES=[
-  {group:"Antimicrobial stewardship",title:"Antimicrobial decision support",desc:"ASP DSS: empirical antimicrobial guidance from the local antibiogram",url:"https://asem86.github.io/Alsobh-ASP-DSS/",icon:"\u{1F48A}",color:"#245E68"},
-  {group:"Antimicrobial stewardship",title:"Restricted antimicrobial request",desc:"Request approval for a restricted antimicrobial",url:"https://asem86.github.io/ASP--Restricted-antimicrobial-Request/",icon:"\u{1F4DD}",color:"#2B6CB0"},
+  {group:"Antimicrobial stewardship",title:"Antimicrobial decision support",desc:"ASP DSS: empirical antimicrobial guidance from the local antibiogram",url:"https://asem-naji.github.io/Alsobh-ASP-DSS/",icon:"\u{1F48A}",color:"#245E68"},
+  {group:"Antimicrobial stewardship",title:"Restricted antimicrobial request",desc:"Request approval for a restricted antimicrobial",url:"https://asem-naji.github.io/ASP--Restricted-antimicrobial-Request/",icon:"\u{1F4DD}",color:"#2B6CB0"},
   {group:"Infection prevention and control",title:"Infection Control Link",desc:"Sign in to enter audits and device care bundles",url:"https://asem-naji.github.io/IPC-Platform-/",icon:"\u{1F9FC}",color:"#1E7B4F"},
   {group:"Infection prevention and control",title:"Communicable disease notification",desc:"Report a suspected or confirmed case",url:"https://asem-naji.github.io/IPC-Platform-/notify.html",icon:"\u{1F514}",color:"#B42318"}];
 const esc=v=>String(v).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
